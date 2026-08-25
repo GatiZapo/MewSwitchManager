@@ -55,9 +55,6 @@ public sealed class InstallationEngine
     public async Task RefreshAsync(CancellationToken ct = default)
     {
         Disks = await _disks.ScanAsync(ct);
-
-        // Never silently replace a remembered USB with another drive. A missing or
-        // changed device must remain unselected until the user explicitly chooses one.
         var selected = string.IsNullOrWhiteSpace(_state.SelectedDiskNumber)
             ? null
             : Disks.FirstOrDefault(d =>
@@ -104,20 +101,12 @@ public sealed class InstallationEngine
                                 info.LastWriteTimeUtc == _state.LinuxVerifiedLastWriteUtc.Value.UtcDateTime;
 
                 if (!fingerprintKnown)
-                {
-                    // Legacy state from 0.2: keep the flag for now, but the next
-                    // destructive workflow still performs a complete SHA-1 check.
                     _logger.Info("Legacy Linux verification state detected; destructive operations will re-verify the image.");
-                }
                 else if (!unchanged)
-                {
                     InvalidateLinuxVerification("Cached Linux image changed since it was verified.");
-                }
             }
         }
 
-        // Hekate can be detected from the SD card mounted in Windows. Only advance
-        // this physical checkpoint if the USB stage is already known to be complete.
         if (_state.IsStageComplete(InstallationStage.UsbStoragePreparation) &&
             !_state.IsStageComplete(InstallationStage.HekateSd) &&
             HekateDetected)
@@ -203,8 +192,6 @@ public sealed class InstallationEngine
         if (!_state.LinuxVerified)
             throw new InvalidOperationException("The Linux image must be verified before writing the USB target.");
 
-        // Never trust persisted verification for a destructive operation. The full
-        // SHA-1 check remains mandatory immediately before the USB write.
         if (!await _linux.VerifyExistingAsync(_cache, ct))
         {
             InvalidateLinuxVerification("Cached image failed final destructive-operation re-verification.");
@@ -250,8 +237,9 @@ public sealed class InstallationEngine
         SetStage(stage, StageState.Completed, message);
         var next = Enum.GetValues<InstallationStage>()
             .Where(x => x > stage && x != InstallationStage.Completed)
+            .Select(x => (InstallationStage?)x)
             .FirstOrDefault();
-        _state.CurrentStage = next == default ? InstallationStage.Completed : next;
+        _state.CurrentStage = next ?? InstallationStage.Completed;
         if (_state.CurrentStage == InstallationStage.Completed)
             _state.LastSuccessfulRunAt = DateTimeOffset.UtcNow;
         Persist();
