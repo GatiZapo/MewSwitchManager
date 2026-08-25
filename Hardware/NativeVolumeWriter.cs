@@ -7,9 +7,8 @@ using MewSwitchManager.Models;
 namespace MewSwitchManager.Hardware;
 
 /// <summary>
-/// Writes an image directly to a Windows volume handle. This mirrors the
-/// Switchroot USB procedure: create a partition, then flash ubuntu.raw to
-/// that partition rather than to the physical disk itself.
+/// Writes an image directly to a Windows volume handle. The writer deliberately
+/// opens the target as a raw volume and dismounts it before streaming the image.
 /// </summary>
 public sealed class NativeVolumeWriter
 {
@@ -61,15 +60,7 @@ public sealed class NativeVolumeWriter
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException("The Linux image was not found.", sourcePath);
 
-        using var handle = CreateFile(
-            NormalizeVolumePath(volumePath),
-            GenericRead | GenericWrite,
-            FileShareRead | FileShareWrite,
-            IntPtr.Zero,
-            OpenExisting,
-            FileFlagWriteThrough | FileFlagOverlapped,
-            IntPtr.Zero);
-
+        using var handle = OpenVolumeWithFallbacks(volumePath);
         if (handle.IsInvalid)
             throw new Win32Exception(Marshal.GetLastWin32Error(), $"Windows could not open the target volume: {volumePath}");
 
@@ -83,6 +74,54 @@ public sealed class NativeVolumeWriter
         }
     }
 
+    private static SafeFileHandle OpenVolumeWithFallbacks(string path)
+    {
+        foreach (var candidate in GetVolumePathCandidates(path))
+        {
+            var handle = CreateFile(
+                candidate,
+                GenericRead | GenericWrite,
+                FileShareRead | FileShareWrite,
+                IntPtr.Zero,
+                OpenExisting,
+                FileFlagWriteThrough | FileFlagOverlapped,
+                IntPtr.Zero);
+
+            if (!handle.IsInvalid)
+                return handle;
+
+            handle.Dispose();
+        }
+
+        return CreateFile(
+            NormalizeVolumePath(path),
+            GenericRead | GenericWrite,
+            FileShareRead | FileShareWrite,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagWriteThrough | FileFlagOverlapped,
+            IntPtr.Zero);
+    }
+
+    private static IEnumerable<string> GetVolumePathCandidates(string path)
+    {
+        path = path.Trim();
+        var normalized = NormalizeVolumePath(path);
+        yield return normalized;
+
+        if (normalized.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase))
+        {
+            var alternate = @"\\.\" + normalized[4..];
+            yield return alternate;
+        }
+
+        if (normalized.StartsWith(@"\\.\Volume{", StringComparison.OrdinalIgnoreCase))
+        {
+            var alternate = @"\\?\" + normalized[4..];
+            yield return alternate;
+        }
+    }
+
     private static async Task WriteHandleAsync(
         SafeFileHandle handle,
         string sourcePath,
@@ -90,8 +129,6 @@ public sealed class NativeVolumeWriter
         CancellationToken ct)
     {
         await using var source = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        // FileStream assumes ownership of a SafeFileHandle. Keep the original
-        // handle owned by this writer and give the stream a non-owning wrapper.
         using var streamHandle = new SafeFileHandle(handle.DangerousGetHandle(), ownsHandle: false);
         await using var destination = new FileStream(streamHandle, FileAccess.Write, 4 * 1024 * 1024, isAsync: true);
 
@@ -147,9 +184,9 @@ public sealed class NativeVolumeWriter
     private static string NormalizeVolumePath(string path)
     {
         path = path.Trim();
-        if (path.StartsWith("\\\\?\\Volume{", StringComparison.OrdinalIgnoreCase))
+        if (path.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase))
             return path.TrimEnd('\\') + "\\";
-        if (path.StartsWith("\\\\.\\Volume{", StringComparison.OrdinalIgnoreCase))
+        if (path.StartsWith(@"\\.\Volume{", StringComparison.OrdinalIgnoreCase))
             return path.TrimEnd('\\') + "\\";
         return path;
     }
