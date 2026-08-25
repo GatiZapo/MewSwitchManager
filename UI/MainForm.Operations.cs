@@ -219,26 +219,26 @@ public sealed partial class MainForm
                 {
                     case "EXTRACTING LINUX IMAGE":
                         _progress.Caption = "EXTRACTING LINUX IMAGE";
-                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
+                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
                         _progress.Detail = p.TotalBytes is > 0
-                            ? $"Processing archive entries: {p.BytesReceived:N0} / {p.TotalBytes.Value:N0}"
+                            ? $"Extracting Linux image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes.Value)}"
                             : "Extracting archive...";
                         _progress.RightText = $"{_progress.Value:0}%";
                         SetStatus("●  EXTRACTING IMAGE", Theme.Blue);
                         break;
                     case "BUILDING LINUX IMAGE":
                         _progress.Caption = "BUILDING LINUX IMAGE";
-                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
-                        _progress.Detail = $"Merging image parts: {p.BytesReceived:N0} / {p.TotalBytes ?? 0:N0}";
+                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
+                        _progress.Detail = $"Building raw image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
                         _progress.RightText = $"{_progress.Value:0}%";
                         SetStatus("●  BUILDING IMAGE", Theme.Blue);
                         break;
                     case "VERIFYING TARGET":
                         _progress.Caption = "VERIFYING TARGET";
-                        _progress.Value = 0;
-                        _progress.Detail = "Re-checking the USB identity before any destructive operation.";
-                        _progress.RightText = "CHECK";
-                        SetStatus("●  VERIFYING TARGET", Theme.Blue);
+                        _progress.Value = 100;
+                        _progress.Detail = "Re-checking USB identity before the destructive operation.";
+                        _progress.RightText = "OK";
+                        SetStatus("●  TARGET VERIFIED", Theme.Green);
                         break;
                     case "PARTITIONING USB":
                         _progress.Caption = "PARTITIONING USB";
@@ -249,8 +249,8 @@ public sealed partial class MainForm
                         break;
                     case "FLASHING USB":
                         _progress.Caption = "FLASHING USB";
-                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
-                        _progress.Detail = $"Writing Linux image: {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
+                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
+                        _progress.Detail = $"Writing Linux image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
                         _progress.RightText = $"{_progress.Value:0}%";
                         SetStatus("●  FLASHING USB", Theme.Pink);
                         break;
@@ -263,7 +263,7 @@ public sealed partial class MainForm
                         break;
                     default:
                         _progress.Caption = p.Phase;
-                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
+                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
                         _progress.Detail = "Working...";
                         _progress.RightText = p.TotalBytes is > 0 ? $"{_progress.Value:0}%" : "WORKING";
                         break;
