@@ -33,17 +33,20 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
 
         logger.Warn($"USB write requested for Disk {target.Number}: {target.Model} ({target.SizeGb:0.0} GB). All data on the target will be destroyed.");
 
-        await ExtractArchiveAsync(archivePath, extractDir, ct);
-        var rawPath = await ResolveRawImageAsync(extractDir, ct);
+        await ExtractArchiveAsync(archivePath, extractDir, progress, ct);
+        var rawPath = await ResolveRawImageAsync(extractDir, progress, ct);
         var rawSize = new FileInfo(rawPath).Length;
         if (rawSize <= 0) throw new InvalidDataException("The extracted Linux image is empty.");
         if (target.SizeGb * 1_000_000_000d < rawSize)
             throw new InvalidOperationException($"The selected USB is too small. It has about {target.SizeGb:0.0} GB, while the Linux image needs {rawSize / 1_000_000_000d:0.00} GB.");
 
+        progress?.Report(new DownloadProgress(0, 1, 0, null, "VERIFYING TARGET"));
+
         // Final identity gate immediately before the destructive operation.
         var beforeClean = await new DiskService(runner, logger).GetDiskAsync(target.Number, ct);
         safety.DemandStableIdentity(target, beforeClean);
 
+        progress?.Report(new DownloadProgress(0, 1, 0, null, "PARTITIONING USB"));
         await RepartitionTargetAsync(diskNumber, ct);
         var partition = await GetFirstPartitionVolumeAsync(diskNumber, ct);
         if (partition is null || string.IsNullOrWhiteSpace(partition.Value.VolumePath))
@@ -58,8 +61,11 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
         safety.DemandStableIdentity(target, afterPartition);
 
         logger.Info($"Flashing ubuntu.raw ({rawSize:N0} bytes) to USB partition {partition.Value.PartitionNumber} at {partition.Value.VolumePath}.");
+        progress?.Report(new DownloadProgress(0, rawSize, 0, null, "FLASHING USB"));
         await _writer.WriteAsync(partition.Value.VolumePath!, rawPath, progress, ct);
         logger.Info("USB Linux image write completed successfully.");
+
+        progress?.Report(new DownloadProgress(1, 1, 0, TimeSpan.Zero, "USB FLASH COMPLETE"));
 
         try
         {
@@ -72,8 +78,9 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
         }
     }
 
-    private async Task<string> ResolveRawImageAsync(string root, CancellationToken ct)
+    private async Task<string> ResolveRawImageAsync(string root, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
+        progress?.Report(new DownloadProgress(0, 1, 0, null, "BUILDING LINUX IMAGE"));
         var raw = Directory.EnumerateFiles(root, "ubuntu.raw", SearchOption.AllDirectories).FirstOrDefault();
         if (raw is not null) return raw;
 
@@ -86,32 +93,36 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
             throw new InvalidDataException("The Linux archive does not contain ubuntu.raw or l4t split image files.");
 
         var output = Path.Combine(root, "ubuntu.raw");
-        await MergePartsAsync(parts, output, ct);
+        await MergePartsAsync(parts, output, progress, ct);
         return output;
     }
 
-    private async Task ExtractArchiveAsync(string archivePath, string destination, CancellationToken ct)
+    private async Task ExtractArchiveAsync(string archivePath, string destination, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
-        // Windows Defender and other indexers can briefly lock freshly-created files.
-        // Extract each entry to a unique temporary file first, then move it into place
-        // with a short retry window. This avoids SharpCompress trying to overwrite a
-        // file that another process has just opened (notably bootloader.ini).
         logger.Info("Extracting Linux archive...");
-        await Task.Run(() => ExtractArchiveWithRetries(archivePath, destination, ct), ct);
+        await Task.Run(() => ExtractArchiveWithRetries(archivePath, destination, progress, ct), ct);
         logger.Info("Linux archive extracted successfully.");
     }
 
-    private void ExtractArchiveWithRetries(string archivePath, string destination, CancellationToken ct)
+    private void ExtractArchiveWithRetries(string archivePath, string destination, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
         var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         using var archive = SevenZipArchive.OpenArchive(archivePath);
+        var entries = archive.Entries.ToArray();
+        var total = Math.Max(1, entries.Length);
+        var completed = 0;
 
-        foreach (var entry in archive.Entries)
+        progress?.Report(new DownloadProgress(0, total, 0, null, "EXTRACTING LINUX IMAGE"));
+
+        foreach (var entry in entries)
         {
             ct.ThrowIfCancellationRequested();
             var key = entry.Key;
             if (string.IsNullOrWhiteSpace(key))
+            {
+                completed++;
                 continue;
+            }
 
             var relative = key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
             var outputPath = Path.GetFullPath(Path.Combine(destination, relative));
@@ -121,23 +132,27 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
             if (entry.IsDirectory)
             {
                 Directory.CreateDirectory(outputPath);
-                continue;
+            }
+            else
+            {
+                var parent = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrWhiteSpace(parent))
+                    Directory.CreateDirectory(parent);
+
+                var tempPath = outputPath + $".{Guid.NewGuid():N}.mewtmp";
+                try
+                {
+                    WriteEntryToTempWithRetry(entry, tempPath, ct);
+                    MoveExtractedFileWithRetry(tempPath, outputPath, ct);
+                }
+                finally
+                {
+                    TryDeleteFile(tempPath);
+                }
             }
 
-            var parent = Path.GetDirectoryName(outputPath);
-            if (!string.IsNullOrWhiteSpace(parent))
-                Directory.CreateDirectory(parent);
-
-            var tempPath = outputPath + $".{Guid.NewGuid():N}.mewtmp";
-            try
-            {
-                WriteEntryToTempWithRetry(entry, tempPath, ct);
-                MoveExtractedFileWithRetry(tempPath, outputPath, ct);
-            }
-            finally
-            {
-                TryDeleteFile(tempPath);
-            }
+            completed++;
+            progress?.Report(new DownloadProgress(completed, total, 0, null, "EXTRACTING LINUX IMAGE"));
         }
     }
 
@@ -201,21 +216,22 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
         }
         catch
         {
-            // Best-effort cleanup; the main operation should report its original error.
         }
     }
 
-    private async Task MergePartsAsync(string[] parts, string output, CancellationToken ct)
+    private async Task MergePartsAsync(string[] parts, string output, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
         await using var dest = new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4 * 1024 * 1024, FileOptions.SequentialScan | FileOptions.Asynchronous);
-        foreach (var part in parts)
+        for (var i = 0; i < parts.Length; i++)
         {
             ct.ThrowIfCancellationRequested();
-            logger.Info($"Merging {Path.GetFileName(part)}...");
-            await using var src = new FileStream(part, FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024, FileOptions.SequentialScan | FileOptions.Asynchronous);
+            logger.Info($"Merging {Path.GetFileName(parts[i])}...");
+            progress?.Report(new DownloadProgress(i, parts.Length, 0, null, "BUILDING LINUX IMAGE"));
+            await using var src = new FileStream(parts[i], FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024, FileOptions.SequentialScan | FileOptions.Asynchronous);
             await src.CopyToAsync(dest, 4 * 1024 * 1024, ct);
         }
         await dest.FlushAsync(ct);
+        progress?.Report(new DownloadProgress(parts.Length, parts.Length, 0, TimeSpan.Zero, "BUILDING LINUX IMAGE"));
         logger.Info($"Merged {parts.Length} Linux image parts into ubuntu.raw.");
     }
 
