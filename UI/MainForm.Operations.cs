@@ -218,31 +218,67 @@ public sealed partial class MainForm
                 switch (p.Phase)
                 {
                     case "EXTRACTING LINUX IMAGE":
-                        _progress.Caption = "EXTRACTING LINUX IMAGE";
-                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
-                        _progress.Detail = p.TotalBytes is > 0
-                            ? $"Extracting Linux image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes.Value)}"
-                            : "Extracting archive...";
-                        _progress.RightText = $"{_progress.Value:0}%";
-                        SetStatus("●  EXTRACTING IMAGE", Theme.Blue);
+                    {
+                        var rawPercent = p.TotalBytes is > 0
+                            ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100)
+                            : 0;
+
+                        // 100% of bytes written is not the end of the operation:
+                        // the final FileStream flush and atomic move still happen afterwards.
+                        // Keep the visual progress below 100 and expose that finalization step.
+                        if (rawPercent >= 100)
+                        {
+                            _progress.Caption = "FINALIZING LINUX IMAGE";
+                            _progress.Value = 96;
+                            _progress.Detail = "Finalizing extracted files and validating the archive...";
+                            _progress.RightText = "FINALIZE";
+                            SetStatus("●  FINALIZING IMAGE", Theme.Blue);
+                        }
+                        else
+                        {
+                            _progress.Caption = "EXTRACTING LINUX IMAGE";
+                            _progress.Value = Math.Min(95, rawPercent);
+                            _progress.Detail = p.TotalBytes is > 0
+                                ? $"Extracting Linux image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes.Value)}"
+                                : "Extracting archive...";
+                            _progress.RightText = $"{_progress.Value:0}%";
+                            SetStatus("●  EXTRACTING IMAGE", Theme.Blue);
+                        }
                         break;
+                    }
                     case "BUILDING LINUX IMAGE":
-                        _progress.Caption = "BUILDING LINUX IMAGE";
-                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
-                        _progress.Detail = $"Building raw image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
-                        _progress.RightText = $"{_progress.Value:0}%";
-                        SetStatus("●  BUILDING IMAGE", Theme.Blue);
+                    {
+                        var rawPercent = p.TotalBytes is > 0
+                            ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100)
+                            : 0;
+                        if (rawPercent >= 100)
+                        {
+                            _progress.Caption = "FINALIZING LINUX IMAGE";
+                            _progress.Value = 96;
+                            _progress.Detail = "Finalizing the rebuilt raw image...";
+                            _progress.RightText = "FINALIZE";
+                            SetStatus("●  FINALIZING IMAGE", Theme.Blue);
+                        }
+                        else
+                        {
+                            _progress.Caption = "BUILDING LINUX IMAGE";
+                            _progress.Value = rawPercent;
+                            _progress.Detail = $"Building raw image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
+                            _progress.RightText = $"{_progress.Value:0}%";
+                            SetStatus("●  BUILDING IMAGE", Theme.Blue);
+                        }
                         break;
+                    }
                     case "VERIFYING TARGET":
                         _progress.Caption = "VERIFYING TARGET";
-                        _progress.Value = 100;
+                        _progress.Value = 97;
                         _progress.Detail = "Re-checking USB identity before the destructive operation.";
-                        _progress.RightText = "OK";
-                        SetStatus("●  TARGET VERIFIED", Theme.Green);
+                        _progress.RightText = "CHECK";
+                        SetStatus("●  VERIFYING TARGET", Theme.Blue);
                         break;
                     case "PARTITIONING USB":
                         _progress.Caption = "PARTITIONING USB";
-                        _progress.Value = 0;
+                        _progress.Value = 98;
                         _progress.Detail = "Creating the target partition. The USB is being modified now.";
                         _progress.RightText = "WORKING";
                         SetStatus("●  PARTITIONING USB", Theme.Pink);
