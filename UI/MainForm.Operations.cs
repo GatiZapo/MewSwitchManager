@@ -40,13 +40,18 @@ public sealed partial class MainForm
     private void UpdateDiskSelector()
     {
         var selectedNumber = _engine.State.SelectedDiskNumber;
-        var safeDisks = _engine.Disks.Where(d => d.SafeCandidate && !d.Protected && d.BusType.Equals("USB", StringComparison.OrdinalIgnoreCase)).ToList();
+        var safeDisks = _engine.Disks
+            .Where(d => d.SafeCandidate && !d.Protected && d.BusType.Equals("USB", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
         _suppressDiskSelection = true;
         _diskSelector.BeginUpdate();
         try
         {
             _diskSelector.Items.Clear();
-            foreach (var disk in safeDisks) _diskSelector.Items.Add(disk);
+            foreach (var disk in safeDisks)
+                _diskSelector.Items.Add(disk);
+
             var selected = safeDisks.FirstOrDefault(d => d.Number == selectedNumber);
             _diskSelector.SelectedItem = selected;
             _targetHint.Text = selected is null
@@ -80,11 +85,15 @@ public sealed partial class MainForm
     private void UpdateHealthPanel()
     {
         var verified = _engine.State.LinuxVerified;
-        _progress.Caption = verified ? "READY FOR USB WRITE" : _engine.State.CurrentStage == InstallationStage.LinuxImage ? "LINUX IMAGE" : "PREFLIGHT";
+        _progress.Caption = verified
+            ? "READY FOR USB WRITE"
+            : _engine.State.CurrentStage == InstallationStage.LinuxImage ? "LINUX IMAGE" : "PREFLIGHT";
         _progress.Detail = verified
             ? "Image verified. The next action is destructive and requires two safety gates plus confirmation."
             : "No destructive operation is started until the target identity is validated.";
-        _progress.Value = verified ? 100 : _engine.State.Stages.FirstOrDefault(s => s.Stage == _engine.State.CurrentStage)?.State == StageState.Completed ? 25 : 0;
+        _progress.Value = verified
+            ? 100
+            : _engine.State.Stages.FirstOrDefault(s => s.Stage == _engine.State.CurrentStage)?.State == StageState.Completed ? 25 : 0;
         _progress.RightText = verified ? "100%" : "READY";
         _progress.Invalidate();
     }
@@ -103,8 +112,9 @@ public sealed partial class MainForm
     private void UpdateUsbCard()
     {
         var disk = _engine.Disks.FirstOrDefault(d => d.Number == _engine.State.SelectedDiskNumber);
-        _usb.ValueText = disk is null ? "No target selected" : _engine.IsSelectedDiskSafe() ? $"Disk {disk.Number} safe" : "Target blocked";
-        _usb.Accent = disk is not null && _engine.IsSelectedDiskSafe() ? Theme.Green : Theme.Red;
+        var safe = disk is not null && _engine.IsSelectedDiskSafe();
+        _usb.ValueText = disk is null ? "No target selected" : safe ? $"Disk {disk.Number} safe" : "Target blocked";
+        _usb.Accent = safe ? Theme.Green : Theme.Red;
         _usb.Invalidate();
     }
 
@@ -126,12 +136,16 @@ public sealed partial class MainForm
             MessageBox.Show(this, ex.Message, "Preflight blocked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             UpdateUi();
         }
-        finally { UpdateActionButtons(); }
+        finally
+        {
+            UpdateActionButtons();
+        }
     }
 
     private async Task RunDownloadAsync()
     {
-        if (!Uri.TryCreate(_config.LinuxImage.Url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (!Uri.TryCreate(_config.LinuxImage.Url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
             MessageBox.Show(this, "La URL de la imagen Linux no es válida. Revisa appsettings.json.", "MewSwitch Manager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -143,14 +157,9 @@ public sealed partial class MainForm
             SetStatus("●  DOWNLOADING", Theme.Pink);
             _progress.Caption = "DOWNLOADING LINUX";
             _progress.Value = 0;
-            var progress = new Progress<DownloadProgress>(p =>
-            {
-                _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
-                _progress.Detail = $"{FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
-                _progress.RightText = $"{FormatSpeed(p.SpeedBytesPerSecond)}  {FormatEta(p.Eta)}";
-                _progress.Invalidate();
-            });
+            var progress = new Progress<DownloadProgress>(RenderDownloadProgress);
             await _engine.DownloadAndVerifyLinuxAsync(progress, _operationCts.Token);
+
             _progress.Value = 100;
             _progress.Caption = "IMAGE VERIFIED";
             _progress.Detail = "The archive is complete and its SHA-1 matches the expected release hash.";
@@ -200,8 +209,7 @@ public sealed partial class MainForm
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2);
-        if (confirmation != DialogResult.Yes) return;
-        if (!ConfirmDestructiveWrite(disk)) return;
+        if (confirmation != DialogResult.Yes || !ConfirmDestructiveWrite(disk)) return;
 
         _operationCts = new CancellationTokenSource();
         try
@@ -213,106 +221,9 @@ public sealed partial class MainForm
             _progress.RightText = "STARTING";
             _progress.Invalidate();
 
-            var progress = new Progress<DownloadProgress>(p =>
-            {
-                switch (p.Phase)
-                {
-                    case "EXTRACTING LINUX IMAGE":
-                    {
-                        var rawPercent = p.TotalBytes is > 0
-                            ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100)
-                            : 0;
-
-                        // 100% of bytes written is not the end of the operation:
-                        // the final FileStream flush and atomic move still happen afterwards.
-                        // Keep the visual progress below 100 and expose that finalization step.
-                        if (rawPercent >= 100)
-                        {
-                            _progress.Caption = "FINALIZING LINUX IMAGE";
-                            _progress.Value = 96;
-                            _progress.Detail = "Finalizing extracted files and validating the archive...";
-                            _progress.RightText = "FINALIZE";
-                            SetStatus("●  FINALIZING IMAGE", Theme.Blue);
-                        }
-                        else
-                        {
-                            _progress.Caption = "EXTRACTING LINUX IMAGE";
-                            _progress.Value = Math.Min(95, rawPercent);
-                            _progress.Detail = p.TotalBytes is > 0
-                                ? $"Extracting Linux image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes.Value)}"
-                                : "Extracting archive...";
-                            _progress.RightText = $"{_progress.Value:0}%";
-                            SetStatus("●  EXTRACTING IMAGE", Theme.Blue);
-                        }
-                        break;
-                    }
-                    case "BUILDING LINUX IMAGE":
-                    {
-                        var rawPercent = p.TotalBytes is > 0
-                            ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100)
-                            : 0;
-                        if (rawPercent >= 100)
-                        {
-                            _progress.Caption = "FINALIZING LINUX IMAGE";
-                            _progress.Value = 96;
-                            _progress.Detail = "Finalizing the rebuilt raw image...";
-                            _progress.RightText = "FINALIZE";
-                            SetStatus("●  FINALIZING IMAGE", Theme.Blue);
-                        }
-                        else
-                        {
-                            _progress.Caption = "BUILDING LINUX IMAGE";
-                            _progress.Value = rawPercent;
-                            _progress.Detail = $"Building raw image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
-                            _progress.RightText = $"{_progress.Value:0}%";
-                            SetStatus("●  BUILDING IMAGE", Theme.Blue);
-                        }
-                        break;
-                    }
-                    case "VERIFYING TARGET":
-                        _progress.Caption = "VERIFYING TARGET";
-                        _progress.Value = 97;
-                        _progress.Detail = "Re-checking USB identity before the destructive operation.";
-                        _progress.RightText = "CHECK";
-                        SetStatus("●  VERIFYING TARGET", Theme.Blue);
-                        break;
-                    case "PARTITIONING USB":
-                        _progress.Caption = "PARTITIONING USB";
-                        _progress.Value = 98;
-                        _progress.Detail = "Creating the target partition. The USB is being modified now.";
-                        _progress.RightText = "WORKING";
-                        SetStatus("●  PARTITIONING USB", Theme.Pink);
-                        break;
-                    case "FLASHING USB":
-                        _progress.Caption = "FLASHING USB";
-                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
-                        _progress.Detail = $"Writing Linux image • {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
-                        _progress.RightText = $"{_progress.Value:0}%";
-                        SetStatus("●  FLASHING USB", Theme.Pink);
-                        break;
-                    case "USB FLASH COMPLETE":
-                        _progress.Caption = "USB READY";
-                        _progress.Value = 100;
-                        _progress.Detail = "Linux image written successfully. Continue with the Hekate/SD part of the setup.";
-                        _progress.RightText = "100%";
-                        SetStatus("●  USB READY", Theme.Green);
-                        break;
-                    default:
-                        _progress.Caption = p.Phase;
-                        _progress.Value = p.TotalBytes is > 0 ? Math.Clamp(p.BytesReceived * 100d / p.TotalBytes.Value, 0, 100) : 0;
-                        _progress.Detail = "Working...";
-                        _progress.RightText = p.TotalBytes is > 0 ? $"{_progress.Value:0}%" : "WORKING";
-                        break;
-                }
-                _progress.Invalidate();
-            });
-
+            var progress = new Progress<DownloadProgress>(RenderInstallProgress);
             await _engine.PrepareUsbAsync(progress, _operationCts.Token);
-            _progress.Value = 100;
-            _progress.Caption = "USB READY";
-            _progress.Detail = "Linux image written successfully. Continue with the Hekate/SD part of the setup.";
-            _progress.RightText = "100%";
-            SetStatus("●  USB READY", Theme.Green);
+            RenderInstallComplete();
             UpdateUi();
         }
         catch (OperationCanceledException)
@@ -338,4 +249,114 @@ public sealed partial class MainForm
         }
     }
 
+    private void RenderDownloadProgress(DownloadProgress progress)
+    {
+        var value = progress.TotalBytes is > 0
+            ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
+            : 0;
+
+        _progress.Value = value;
+        _progress.Caption = progress.Phase;
+        _progress.Detail = progress.Detail ?? $"{FormatBytes(progress.BytesReceived)} / {FormatBytes(progress.TotalBytes ?? 0)}";
+        _progress.RightText = $"{FormatSpeed(progress.SpeedBytesPerSecond)}  {FormatEta(progress.Eta)}";
+        _progress.Invalidate();
+    }
+
+    private void RenderInstallProgress(DownloadProgress progress)
+    {
+        switch (progress.Phase)
+        {
+            case "EXTRACTING LINUX IMAGE":
+                RenderExtractProgress(progress);
+                break;
+            case "FINALIZING LINUX IMAGE":
+                _progress.Caption = "FINALIZING LINUX IMAGE";
+                _progress.Value = 96;
+                _progress.Detail = progress.Detail ?? "Finalizing extracted files...";
+                _progress.RightText = "FINALIZE";
+                SetStatus("●  FINALIZING IMAGE", Theme.Blue);
+                break;
+            case "BUILDING LINUX IMAGE":
+                RenderBuildingProgress(progress);
+                break;
+            case "VERIFYING TARGET":
+                SetFixedStage("VERIFYING TARGET", 97, progress.Detail ?? "Re-checking USB identity before the destructive operation.", "CHECK", Theme.Blue);
+                break;
+            case "PARTITIONING USB":
+                SetFixedStage("PARTITIONING USB", 98, progress.Detail ?? "Creating the target partition. The USB is being modified now.", "WORKING", Theme.Pink);
+                break;
+            case "FLASHING USB":
+                RenderFlashingProgress(progress);
+                break;
+            case "USB FLASH COMPLETE":
+                RenderInstallComplete();
+                break;
+            default:
+                _progress.Caption = progress.Phase;
+                _progress.Value = progress.TotalBytes is > 0
+                    ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
+                    : 0;
+                _progress.Detail = progress.Detail ?? "Working...";
+                _progress.RightText = progress.TotalBytes is > 0 ? $"{_progress.Value:0}%" : "WORKING";
+                break;
+        }
+
+        _progress.Invalidate();
+    }
+
+    private void RenderExtractProgress(DownloadProgress progress)
+    {
+        var rawPercent = progress.TotalBytes is > 0
+            ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
+            : 0;
+
+        // Extraction reaches 100 only after the final entry has been moved.
+        // Keep the visual bar below 100 until the explicit finalization event.
+        _progress.Caption = "EXTRACTING LINUX IMAGE";
+        _progress.Value = Math.Min(95, rawPercent);
+        _progress.Detail = progress.Detail ?? "Extracting Linux image...";
+        _progress.RightText = $"{_progress.Value:0}%";
+        SetStatus("●  EXTRACTING IMAGE", Theme.Blue);
+    }
+
+    private void RenderBuildingProgress(DownloadProgress progress)
+    {
+        var value = progress.TotalBytes is > 0
+            ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
+            : 0;
+        _progress.Caption = "BUILDING LINUX IMAGE";
+        _progress.Value = Math.Min(95, value);
+        _progress.Detail = progress.Detail ?? "Building raw image...";
+        _progress.RightText = $"{_progress.Value:0}%";
+        SetStatus("●  BUILDING IMAGE", Theme.Blue);
+    }
+
+    private void RenderFlashingProgress(DownloadProgress progress)
+    {
+        _progress.Caption = "FLASHING USB";
+        _progress.Value = progress.TotalBytes is > 0
+            ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
+            : 0;
+        _progress.Detail = progress.Detail ?? $"Writing Linux image • {FormatBytes(progress.BytesReceived)} / {FormatBytes(progress.TotalBytes ?? 0)}";
+        _progress.RightText = $"{_progress.Value:0}%";
+        SetStatus("●  FLASHING USB", Theme.Pink);
+    }
+
+    private void SetFixedStage(string caption, double value, string detail, string rightText, Color accent)
+    {
+        _progress.Caption = caption;
+        _progress.Value = value;
+        _progress.Detail = detail;
+        _progress.RightText = rightText;
+        SetStatus($"●  {caption}", accent);
+    }
+
+    private void RenderInstallComplete()
+    {
+        _progress.Caption = "USB READY";
+        _progress.Value = 100;
+        _progress.Detail = "Linux image written successfully. Continue with the Hekate/SD part of the setup.";
+        _progress.RightText = "100%";
+        SetStatus("●  USB READY", Theme.Green);
+    }
 }

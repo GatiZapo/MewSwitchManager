@@ -5,4 +5,5 @@ public sealed record DownloadProgress(
     long? TotalBytes,
     double SpeedBytesPerSecond,
     TimeSpan? Eta,
-    string Phase);
+    string Phase,
+    string? Detail = null);
