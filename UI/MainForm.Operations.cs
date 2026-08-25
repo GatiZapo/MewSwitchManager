@@ -34,6 +34,7 @@ public sealed partial class MainForm
         UpdateStatusCards();
         UpdateStages();
         UpdateHealthPanel();
+        UpdateResumePanel();
         UpdateActionButtons();
     }
 
@@ -50,8 +51,8 @@ public sealed partial class MainForm
             var selected = safeDisks.FirstOrDefault(d => d.Number == selectedNumber);
             _diskSelector.SelectedItem = selected;
             _targetHint.Text = selected is null
-                ? "No safe USB target detected. Connect the intended USB drive and press REFRESH."
-                : $"Protected by Safety Engine • {selected.Model} • {selected.SizeGb:0.0} GB • {selected.BusType}";
+                ? "No remembered USB target is currently present. Connect the intended drive and select it explicitly. MewSwitch will never substitute another drive automatically."
+                : $"IDENTITY LOCKED • {selected.Model} • {selected.SizeGb:0.0} GB • {selected.BusType} • ID {selected.UniqueId}";
         }
         finally
         {
@@ -79,24 +80,109 @@ public sealed partial class MainForm
 
     private void UpdateHealthPanel()
     {
+        var stage = _engine.ResumeStage;
         var verified = _engine.State.LinuxVerified;
-        _progress.Caption = verified ? "READY FOR USB WRITE" : _engine.State.CurrentStage == InstallationStage.LinuxImage ? "LINUX IMAGE" : "PREFLIGHT";
-        _progress.Detail = verified
-            ? "Image verified. The next action is destructive and requires two safety gates plus confirmation."
-            : "No destructive operation is started until the target identity is validated.";
-        _progress.Value = verified ? 100 : _engine.State.Stages.FirstOrDefault(s => s.Stage == _engine.State.CurrentStage)?.State == StageState.Completed ? 25 : 0;
-        _progress.RightText = verified ? "100%" : "READY";
+        _progress.Caption = stage switch
+        {
+            InstallationStage.EnvironmentPreflight => "PREFLIGHT REQUIRED",
+            InstallationStage.LinuxImage => "LINUX IMAGE",
+            InstallationStage.UsbStoragePreparation => verified ? "READY FOR USB WRITE" : "USB WORKFLOW BLOCKED",
+            InstallationStage.HekateSd => "HEKATE / SD CHECKPOINT",
+            InstallationStage.SwitchConfiguration => "SWITCH CONFIGURATION CHECKPOINT",
+            InstallationStage.MewrootHandoff => "MEWROOT HANDOFF CHECKPOINT",
+            InstallationStage.Completed => "INSTALLATION COMPLETE",
+            _ => "RESUME ENGINE"
+        };
+        _progress.Detail = stage switch
+        {
+            InstallationStage.EnvironmentPreflight => "Run the environment and target safety checks. Completed checkpoints are not repeated.",
+            InstallationStage.LinuxImage => "Download or resume the Linux image, then verify its SHA-1 before continuing.",
+            InstallationStage.UsbStoragePreparation => "The image is verified. The final USB identity checks and destructive confirmation remain mandatory.",
+            InstallationStage.HekateSd => "Physical checkpoint: prepare the Hekate/SD side. The manager will remember this checkpoint and can detect Hekate files when the SD is mounted.",
+            InstallationStage.SwitchConfiguration => "Physical/configuration checkpoint: complete the Switch-side configuration, then mark this checkpoint complete.",
+            InstallationStage.MewrootHandoff => "Final physical handoff checkpoint: complete the Mewroot/Linux handoff, then mark the installation complete.",
+            InstallationStage.Completed => "All recorded checkpoints are complete. Nothing needs to be repeated.",
+            _ => "Persisted workflow state loaded."
+        };
+        _progress.Value = stage == InstallationStage.Completed ? 100 :
+            _engine.State.Stages.Count(s => s.State == StageState.Completed) * 100d / Math.Max(1, _engine.State.Stages.Count);
+        _progress.RightText = stage == InstallationStage.Completed ? "DONE" : $"{_progress.Value:0}%";
         _progress.Invalidate();
+    }
+
+    private void UpdateResumePanel()
+    {
+        var stage = _engine.ResumeStage;
+        if (stage == InstallationStage.Completed)
+        {
+            _resumeTitle.Text = "RESUME ENGINE // ALL CHECKPOINTS COMPLETE";
+            _resumeTitle.ForeColor = Theme.Green;
+            _resumeDetail.Text = _engine.State.LastSuccessfulRunAt.HasValue
+                ? $"Installation state is complete. Last successful run: {_engine.State.LastSuccessfulRunAt.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}. No completed steps will be requested again."
+                : "Installation state is complete. No completed steps will be requested again.";
+            _resumeAction.Enabled = false;
+            _resumeAction.Text = "CHECKPOINTS COMPLETE";
+            return;
+        }
+
+        var completed = _engine.State.Stages.Count(s => s.State == StageState.Completed);
+        var total = _engine.State.Stages.Count;
+        _resumeTitle.Text = $"RESUME ENGINE // NEXT: {StageName(stage)}";
+        _resumeTitle.ForeColor = stage is InstallationStage.HekateSd or InstallationStage.SwitchConfiguration or InstallationStage.MewrootHandoff ? Theme.Amber : Theme.Pink;
+        _resumeDetail.Text = $"{completed}/{total} checkpoints complete. MewSwitch will skip completed work, preserve the current state across versions, and only ask for the next required action.\nCurrent state: {_engine.State.Stages.FirstOrDefault(s => s.Stage == stage)?.State.ToString().ToUpperInvariant() ?? "PENDING"}.";
+        var physical = stage is InstallationStage.HekateSd or InstallationStage.SwitchConfiguration or InstallationStage.MewrootHandoff;
+        _resumeAction.Visible = physical;
+        _resumeAction.Enabled = physical && _operationCts is null;
+        _resumeAction.Text = stage == InstallationStage.HekateSd && _engine.HekateDetected ? "DETECTED / REFRESH" : "MARK CHECKPOINT";
+    }
+
+    private static string StageName(InstallationStage stage) => stage switch
+    {
+        InstallationStage.EnvironmentPreflight => "ENVIRONMENT PREFLIGHT",
+        InstallationStage.LinuxImage => "LINUX IMAGE",
+        InstallationStage.UsbStoragePreparation => "USB / STORAGE PREPARATION",
+        InstallationStage.HekateSd => "HEKATE / SD",
+        InstallationStage.SwitchConfiguration => "SWITCH CONFIGURATION",
+        InstallationStage.MewrootHandoff => "MEWROOT HANDOFF",
+        InstallationStage.Completed => "COMPLETED",
+        _ => stage.ToString().ToUpperInvariant()
+    };
+
+    private void MarkResumeCheckpoint()
+    {
+        var stage = _engine.ResumeStage;
+        if (stage is not (InstallationStage.HekateSd or InstallationStage.SwitchConfiguration or InstallationStage.MewrootHandoff))
+            return;
+
+        var detail = stage switch
+        {
+            InstallationStage.HekateSd => "Hekate/SD checkpoint confirmed by the user.",
+            InstallationStage.SwitchConfiguration => "Switch configuration checkpoint confirmed by the user.",
+            InstallationStage.MewrootHandoff => "Mewroot/Linux handoff checkpoint confirmed by the user.",
+            _ => "Checkpoint confirmed by the user."
+        };
+
+        try
+        {
+            _engine.MarkStageCompleted(stage, detail);
+            SetStatus("●  CHECKPOINT SAVED", Theme.Green);
+            UpdateUi();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not save checkpoint", ex);
+            MessageBox.Show(this, ex.Message, "Checkpoint blocked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void UpdateActionButtons()
     {
-        var preflightDone = _engine.State.Stages.Any(s => s.Stage == InstallationStage.EnvironmentPreflight && s.State == StageState.Completed);
+        var stage = _engine.ResumeStage;
         var imageVerified = _engine.State.LinuxVerified;
         var busy = _operationCts is not null;
-        _preflight.Enabled = !busy && !preflightDone;
-        _download.Enabled = !busy && preflightDone && !imageVerified;
-        _start.Enabled = !busy && imageVerified && _engine.IsSelectedDiskSafe();
+        _preflight.Enabled = !busy && stage == InstallationStage.EnvironmentPreflight;
+        _download.Enabled = !busy && stage == InstallationStage.LinuxImage;
+        _start.Enabled = !busy && stage == InstallationStage.UsbStoragePreparation && imageVerified && _engine.IsSelectedDiskSafe();
         _cancel.Enabled = busy;
     }
 
@@ -219,7 +305,7 @@ public sealed partial class MainForm
             await _engine.PrepareUsbAsync(progress, _operationCts.Token);
             _progress.Value = 100;
             _progress.Caption = "USB READY";
-            _progress.Detail = "Linux image written successfully. Continue with the Hekate/SD part of the setup.";
+            _progress.Detail = "Linux image written successfully. Continue with the Hekate/SD checkpoint; completed checkpoints will be remembered.";
             _progress.RightText = "100%";
             SetStatus("●  USB READY", Theme.Green);
             UpdateUi();
