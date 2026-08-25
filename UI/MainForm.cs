@@ -58,6 +58,7 @@ public sealed partial class MainForm : Form
 
         BuildUi();
         InitializeUpdateCenter();
+        ApplyVisualPolish();
         EnableDarkTitleBar();
 
         _logger.Message += Logger_Message;
@@ -65,6 +66,7 @@ public sealed partial class MainForm : Form
         Resize += (_, _) => ApplyResponsiveLayout();
         Shown += async (_, _) =>
         {
+            ApplyVisualPolish();
             await RefreshAsync();
             await CheckForUpdatesOnStartupAsync();
         };
