@@ -125,29 +125,54 @@ public sealed partial class MainForm
         {
             var update = await _updateService.CheckAsync();
             _latestUpdate = update;
-            _updateVersion.Text = $"Installed: {update.CurrentVersion}    Latest: {(string.IsNullOrWhiteSpace(update.LatestVersion) ? "no public release" : update.LatestVersion)}";
+            _updateVersion.Text = string.IsNullOrWhiteSpace(update.LatestVersion)
+                ? $"Installed: {update.CurrentVersion}    Latest: —"
+                : $"Installed: {update.CurrentVersion}    Latest: {update.LatestVersion}";
+
+            if (!string.IsNullOrWhiteSpace(update.ErrorMessage))
+            {
+                _updateStatus.Text = "! UPDATE CHECK FAILED";
+                _updateStatus.ForeColor = Theme.Red;
+                _updateNotes.Text = update.ErrorMessage;
+                _logger.Warn($"Update center: {update.ErrorMessage}");
+                return;
+            }
 
             if (update.IsAvailable)
             {
                 _updateStatus.Text = $"↑ UPDATE AVAILABLE  //  {update.LatestVersion}";
                 _updateStatus.ForeColor = Theme.Pink;
                 _updateInstall.Enabled = !string.IsNullOrWhiteSpace(update.AssetUrl);
-                _updateNotes.Text = string.IsNullOrWhiteSpace(update.ReleaseNotes) ? "A new release is available." : update.ReleaseNotes;
+                _updateNotes.Text = string.IsNullOrWhiteSpace(update.ReleaseNotes)
+                    ? "A new release is available."
+                    : update.ReleaseNotes;
+            }
+            else if (string.IsNullOrWhiteSpace(update.LatestVersion))
+            {
+                _updateStatus.Text = "✓ NO PUBLIC RELEASES";
+                _updateStatus.ForeColor = Theme.Muted;
+                _updateNotes.Text = "GitHub is reachable, but the repository has no public release yet.";
             }
             else
             {
-                _updateStatus.Text = string.IsNullOrWhiteSpace(update.LatestVersion)
-                    ? "● No public GitHub Release exists yet."
-                    : "✓ MewSwitch Manager is up to date.";
+                _updateStatus.Text = "✓ MEWSWITCH MANAGER IS UP TO DATE";
                 _updateStatus.ForeColor = Theme.Green;
-                _updateNotes.Text = string.IsNullOrWhiteSpace(update.ReleaseNotes) ? "" : update.ReleaseNotes;
+                _updateNotes.Text = string.IsNullOrWhiteSpace(update.ReleaseNotes)
+                    ? $"Release {update.TagName} is currently installed."
+                    : update.ReleaseNotes;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _updateStatus.Text = "● UPDATE CHECK CANCELLED";
+            _updateStatus.ForeColor = Theme.Amber;
         }
         catch (Exception ex)
         {
-            _updateStatus.Text = "! Update check failed — see operation log.";
+            _updateStatus.Text = "! UPDATE CHECK FAILED";
             _updateStatus.ForeColor = Theme.Red;
-            _logger.Warn($"Update center: {ex.Message}");
+            _updateNotes.Text = ex.Message;
+            _logger.Error($"Update center: {ex.Message}");
         }
         finally
         {
