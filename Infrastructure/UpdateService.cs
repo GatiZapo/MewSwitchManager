@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -18,7 +19,10 @@ public sealed class UpdateService
     public UpdateService(AppLogger logger)
     {
         _logger = logger;
-        _http = new HttpClient();
+        _http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MewSwitchManager", GetCurrentVersion()));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
@@ -31,23 +35,52 @@ public sealed class UpdateService
 
     public async Task<UpdateInfo> CheckAsync(CancellationToken ct = default)
     {
+        var current = GetCurrentVersion();
+
         try
         {
             using var response = await _http.GetAsync(ReleasesUri, ct);
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                return UpdateInfo.NoUpdate(GetCurrentVersion());
 
-            response.EnsureSuccessStatusCode();
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _logger.Info("GitHub update check: no public release exists.");
+                return UpdateInfo.NoUpdate(current);
+            }
+
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                var remaining = response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)
+                    ? values.FirstOrDefault()
+                    : null;
+                var detail = string.Equals(remaining, "0", StringComparison.Ordinal)
+                    ? "GitHub API rate limit reached."
+                    : "GitHub denied the update request.";
+                _logger.Warn($"Update check: {detail}");
+                return UpdateInfo.Error(current, detail);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var detail = $"GitHub returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).";
+                _logger.Warn($"Update check: {detail}");
+                return UpdateInfo.Error(current, detail);
+            }
+
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
             var root = doc.RootElement;
 
-            var tag = root.TryGetProperty("tag_name", out var tagProp) ? tagProp.GetString() ?? "" : "";
-            var latest = tag.TrimStart('v');
-            var current = GetCurrentVersion();
-            var url = root.TryGetProperty("html_url", out var urlProp) ? urlProp.GetString() ?? "" : "";
-            var name = root.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? tag : tag;
-            var body = root.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() ?? "" : "";
+            if (root.ValueKind != JsonValueKind.Object)
+                return UpdateInfo.Error(current, "GitHub returned an invalid release response.");
+
+            var tag = GetString(root, "tag_name");
+            if (string.IsNullOrWhiteSpace(tag))
+                return UpdateInfo.Error(current, "GitHub returned a release without a tag.");
+
+            var latest = tag.TrimStart('v', 'V');
+            var url = GetString(root, "html_url");
+            var name = GetString(root, "name");
+            var body = GetString(root, "body");
 
             string? assetUrl = null;
             string? assetName = null;
@@ -56,9 +89,12 @@ public sealed class UpdateService
                 var preferred = GetPreferredArchitecture();
                 foreach (var asset in assets.EnumerateArray())
                 {
-                    var n = asset.TryGetProperty("name", out var nProp) ? nProp.GetString() : null;
-                    var u = asset.TryGetProperty("browser_download_url", out var uProp) ? uProp.GetString() : null;
-                    if (n is null || u is null || !n.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
+                    var n = GetString(asset, "name");
+                    var u = GetString(asset, "browser_download_url");
+                    if (string.IsNullOrWhiteSpace(n) || string.IsNullOrWhiteSpace(u) ||
+                        !n.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     if (n.Contains(preferred, StringComparison.OrdinalIgnoreCase))
                     {
                         assetName = n;
@@ -69,16 +105,38 @@ public sealed class UpdateService
             }
 
             var available = IsNewer(latest, current);
+            _logger.Info(available
+                ? $"GitHub update available: {current} -> {latest} ({GetPreferredArchitecture()})."
+                : $"GitHub update check complete: {current} is current against {latest}.");
+
             return new UpdateInfo(available, current, latest, tag, url, name, body, assetUrl, assetName);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
+        catch (HttpRequestException ex)
+        {
+            var message = "Unable to reach GitHub. Check your internet connection.";
+            _logger.Warn($"Update check failed: {ex.Message}");
+            return UpdateInfo.Error(current, message);
+        }
+        catch (TaskCanceledException)
+        {
+            var message = "GitHub update check timed out.";
+            _logger.Warn(message);
+            return UpdateInfo.Error(current, message);
+        }
+        catch (JsonException ex)
+        {
+            var message = "GitHub returned invalid release data.";
+            _logger.Warn($"Update check failed: {ex.Message}");
+            return UpdateInfo.Error(current, message);
+        }
         catch (Exception ex)
         {
-            _logger.Warn($"Update check failed: {ex.Message}");
-            return UpdateInfo.NoUpdate(GetCurrentVersion());
+            _logger.Error($"Update check failed: {ex.Message}");
+            return UpdateInfo.Error(current, "The update check failed unexpectedly. See the operation log for details.");
         }
     }
 
@@ -143,25 +201,63 @@ Remove-Item -LiteralPath '{EscapePowerShell(tempRoot)}' -Recurse -Force -ErrorAc
     public static string GetPreferredArchitecture() =>
         RuntimeInformation.ProcessArchitecture switch
         {
-            Architecture.Arm64 => "ARM64",
+            Architecture.Arm64 => "arm64",
             Architecture.X86 => "x86",
             _ => "x64"
         };
 
     private static bool IsNewer(string latest, string current)
     {
-        if (!Version.TryParse(NormalizeVersion(latest), out var l)) return false;
-        if (!Version.TryParse(NormalizeVersion(current), out var c)) return false;
-        return l > c;
+        var l = ParseVersion(latest);
+        var c = ParseVersion(current);
+        if (l is null || c is null) return false;
+        return l.Value.CompareTo(c.Value) > 0;
     }
 
-    private static string NormalizeVersion(string value)
+    private static VersionKey? ParseVersion(string value)
     {
-        var clean = value.Trim().TrimStart('v');
-        var dash = clean.IndexOf('-');
-        if (dash >= 0) clean = clean[..dash];
-        return clean;
+        var clean = value.Trim().TrimStart('v', 'V');
+        var parts = clean.Split('-', 2, StringSplitOptions.TrimEntries);
+        if (!Version.TryParse(parts[0], out var core)) return null;
+
+        var prerelease = parts.Length == 1 ? Array.Empty<string>() : parts[1].Split('.', StringSplitOptions.RemoveEmptyEntries);
+        return new VersionKey(core, prerelease);
     }
+
+    private static string GetString(JsonElement element, string property)
+        => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
 
     private static string EscapePowerShell(string value) => value.Replace("'", "''");
+
+    private readonly record struct VersionKey(Version Core, string[] Prerelease) : IComparable<VersionKey>
+    {
+        public int CompareTo(VersionKey other)
+        {
+            var core = Core.CompareTo(other.Core);
+            if (core != 0) return core;
+
+            if (Prerelease.Length == 0 && other.Prerelease.Length == 0) return 0;
+            if (Prerelease.Length == 0) return 1;
+            if (other.Prerelease.Length == 0) return -1;
+
+            var count = Math.Min(Prerelease.Length, other.Prerelease.Length);
+            for (var i = 0; i < count; i++)
+            {
+                var a = Prerelease[i];
+                var b = other.Prerelease[i];
+                if (a == b) continue;
+
+                var aNum = int.TryParse(a, out var ai);
+                var bNum = int.TryParse(b, out var bi);
+                if (aNum && bNum) return ai.CompareTo(bi);
+                if (aNum) return -1;
+                if (bNum) return 1;
+                return string.CompareOrdinal(a, b);
+            }
+
+            return Prerelease.Length.CompareTo(other.Prerelease.Length);
+        }
+    }
 }
