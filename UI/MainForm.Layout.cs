@@ -77,7 +77,7 @@ public sealed partial class MainForm
         {
             Dock = DockStyle.Top,
             Height = 28,
-            Text = "MANAGER  //  0.2 ALPHA",
+            Text = "MANAGER  //  0.3 ALPHA",
             ForeColor = Theme.Muted,
             Font = Theme.Mono(7.5f, FontStyle.Bold),
             Padding = new Padding(8, 0, 0, 0)
@@ -145,7 +145,7 @@ public sealed partial class MainForm
         _compactNav.Paint += (_, e) => Theme.Round(e.Graphics, new Rectangle(0, 0, _compactNav.Width - 1, _compactNav.Height - 1), 12, Theme.Surface, Theme.Border);
 
         var brand = new Label { Text = "MEW / SWITCH", Dock = DockStyle.Left, Width = 180, ForeColor = Theme.Pink, Font = Theme.Mono(9.5f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft };
-        var mode = new Label { Text = "0.2 ALPHA", Dock = DockStyle.Right, Width = 100, ForeColor = Theme.Muted, Font = Theme.Mono(7.5f), TextAlign = ContentAlignment.MiddleRight };
+        var mode = new Label { Text = "0.3 ALPHA", Dock = DockStyle.Right, Width = 100, ForeColor = Theme.Muted, Font = Theme.Mono(7.5f), TextAlign = ContentAlignment.MiddleRight };
         _compactNav.Controls.Add(mode);
         _compactNav.Controls.Add(brand);
 
@@ -174,7 +174,7 @@ public sealed partial class MainForm
             Font = Theme.UI(9.5f),
             AutoEllipsis = true
         };
-        var statusPill = new Panel { Dock = DockStyle.Right, Width = 250, BackColor = Theme.Background, Padding = new Padding(0, 8, 0, 0) };
+        var statusPill = new Panel { Dock = DockStyle.Right, Width = 190, BackColor = Theme.Background, Padding = new Padding(0, 8, 0, 0) };
         _status.Text = "●  SYSTEM READY";
         _status.ForeColor = Theme.Green;
         _status.Font = Theme.Mono(8.5f, FontStyle.Bold);
@@ -271,17 +271,18 @@ public sealed partial class MainForm
         _targetHint.ForeColor = Theme.Muted;
         _targetHint.Font = Theme.UI(8.2f);
         _targetHint.AutoEllipsis = true;
+        _targetHint.Padding = new Padding(0, 2, 0, 0);
         layout.Controls.Add(_targetHint, 0, 3);
 
         card.Controls.Add(layout);
-        card.Height = 166;
+        card.Height = 190;
         return card;
     }
 
     private Control BuildHealthSection()
     {
-        var host = new Panel { Dock = DockStyle.Fill, Height = 198, BackColor = Theme.Background, Margin = new Padding(0, 0, 0, 10) };
-        var cards = new TableLayoutPanel { Dock = DockStyle.Top, Height = 82, ColumnCount = 4, RowCount = 1, BackColor = Theme.Background, Margin = Padding.Empty };
+        var host = new Panel { Dock = DockStyle.Fill, Height = 222, BackColor = Theme.Background, Margin = new Padding(0, 0, 0, 10) };
+        var cards = new TableLayoutPanel { Dock = DockStyle.Top, Height = 88, ColumnCount = 4, RowCount = 1, BackColor = Theme.Background, Margin = Padding.Empty };
         for (var i = 0; i < 4; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         var all = new[] { _rcm, _wsl, _linux, _usb };
         for (var i = 0; i < all.Length; i++)
@@ -293,7 +294,7 @@ public sealed partial class MainForm
         host.Controls.Add(cards);
 
         _progress.Dock = DockStyle.Top;
-        _progress.Height = 104;
+        _progress.Height = 124;
         _progress.Margin = new Padding(0, 10, 0, 0);
         host.Controls.Add(_progress);
         return host;
