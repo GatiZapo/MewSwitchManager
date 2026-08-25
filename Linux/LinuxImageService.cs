@@ -19,7 +19,7 @@ public sealed class LinuxImageService
         _logger = logger;
         _config = config;
         _http.Timeout = Timeout.InfiniteTimeSpan;
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MewSwitch-Manager/0.2");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd($"MewSwitch-Manager/{_config.AppVersion}");
     }
 
     public string FinalPath(string cacheDirectory) => Path.Combine(cacheDirectory, _config.LinuxImage.FileName);
@@ -126,7 +126,6 @@ public sealed class LinuxImageService
                     await target.FlushAsync(ct);
                 }
 
-                // Critical: the FileStream is closed before rename/hash verification.
                 ReplaceAtomically(partPath, finalPath);
                 _logger.Info($"Download complete: {new FileInfo(finalPath).Length:N0} bytes.");
                 progress?.Report(new DownloadProgress(new FileInfo(finalPath).Length, total, 0, TimeSpan.Zero, "VERIFYING IMAGE"));

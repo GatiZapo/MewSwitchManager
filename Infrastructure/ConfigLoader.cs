@@ -35,12 +35,19 @@ public static class ConfigLoader
         config.Safety ??= new SafetyConfig();
         config.Dependencies ??= new DependencyConfig();
         config.Ui ??= new UiConfig();
+        config.Updates ??= new UpdateConfig();
 
+        if (string.IsNullOrWhiteSpace(config.AppVersion))
+            config.AppVersion = "0.3.0-alpha";
         if (string.IsNullOrWhiteSpace(config.LinuxImage.Url))
             config.LinuxImage.Url = new LinuxImageConfig().Url;
         if (string.IsNullOrWhiteSpace(config.LinuxImage.FileName))
             config.LinuxImage.FileName = new LinuxImageConfig().FileName;
         if (config.LinuxImage.ExpectedSizeBytes <= 0)
             config.LinuxImage.ExpectedSizeBytes = new LinuxImageConfig().ExpectedSizeBytes;
+        if (string.IsNullOrWhiteSpace(config.LinuxImage.LinuxDistroVersion))
+            config.LinuxImage.LinuxDistroVersion = new LinuxImageConfig().LinuxDistroVersion;
+        if (string.IsNullOrWhiteSpace(config.Updates.Repository))
+            config.Updates.Repository = "GatiZapo/MewSwitchManager";
     }
 }

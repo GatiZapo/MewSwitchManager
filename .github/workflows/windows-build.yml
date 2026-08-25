@@ -12,7 +12,7 @@ permissions:
 
 env:
   PROJECT: MewSwitchManager.csproj
-  VERSION: 0.2.0-alpha
+  VERSION: 0.3.0-alpha
 
 jobs:
   build:
@@ -49,6 +49,14 @@ jobs:
 
       - name: Build Release
         run: dotnet build $env:PROJECT -c Release --no-restore
+
+      - name: Validate configuration
+        shell: pwsh
+        run: |
+          $config = Get-Content 'appsettings.json' -Raw | ConvertFrom-Json
+          if ($config.AppVersion -ne $env:VERSION) { throw "Version mismatch: appsettings=$($config.AppVersion), workflow=$env:VERSION" }
+          if ([string]::IsNullOrWhiteSpace($config.Updates.Repository)) { throw 'Updates.Repository is empty.' }
+          if ([string]::IsNullOrWhiteSpace($config.LinuxImage.LinuxDistroVersion)) { throw 'LinuxDistroVersion is empty.' }
 
       - name: Publish self-contained single-file
         shell: pwsh

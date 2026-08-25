@@ -20,6 +20,7 @@ public sealed class InstallationEngine
     private readonly AppConfig _config;
 
     public AppState State => _state;
+    public InstallationStage ResumeStage => _state.GetResumeStage();
     public IReadOnlyList<DiskInfo> Disks { get; private set; } = [];
     public bool WslReady { get; private set; }
     public bool RcmConnected { get; private set; }
@@ -42,24 +43,89 @@ public sealed class InstallationEngine
         _safety = new SafetyEngine();
         _usb = new UsbStorageService(runner, logger, _safety);
         _dependencies = new DependencyService(runner, logger);
+
+        if (!string.Equals(_state.LastKnownAppVersion, _config.AppVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.Info($"State loaded from previous application version: {_state.LastKnownAppVersion ?? "unknown"} -> {_config.AppVersion}.");
+            _state.LastKnownAppVersion = _config.AppVersion;
+            Persist();
+        }
     }
 
     public async Task RefreshAsync(CancellationToken ct = default)
     {
         Disks = await _disks.ScanAsync(ct);
-        var selected = Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber && d.SafeCandidate && (string.IsNullOrWhiteSpace(_state.SelectedDiskUniqueId) || string.Equals(d.UniqueId, _state.SelectedDiskUniqueId, StringComparison.OrdinalIgnoreCase)));
-        if (selected is null)
+        var selected = string.IsNullOrWhiteSpace(_state.SelectedDiskNumber)
+            ? null
+            : Disks.FirstOrDefault(d =>
+                d.Number == _state.SelectedDiskNumber &&
+                d.SafeCandidate &&
+                !d.Protected &&
+                string.Equals(d.BusType, "USB", StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(_state.SelectedDiskUniqueId) ||
+                 string.Equals(d.UniqueId, _state.SelectedDiskUniqueId, StringComparison.OrdinalIgnoreCase)));
+
+        if (selected is null && !string.IsNullOrWhiteSpace(_state.SelectedDiskNumber))
         {
-            var fallback = Disks.FirstOrDefault(d => d.SafeCandidate);
-            _state.SelectedDiskNumber = fallback?.Number;
-            _state.SelectedDiskIdentity = fallback?.DisplayName ?? "";
-            _state.SelectedDiskUniqueId = fallback?.UniqueId ?? "";
-            _state.UpdatedAt = DateTimeOffset.UtcNow;
+            _logger.Warn($"Remembered USB target {_state.SelectedDiskNumber} is not present with the expected identity. No replacement target was selected automatically.");
+            _state.SelectedDiskNumber = "";
+            _state.SelectedDiskIdentity = "";
+            _state.SelectedDiskUniqueId = "";
         }
+
         WslReady = await _probe.IsWslReadyAsync(ct);
         RcmConnected = await _probe.IsRcmConnectedAsync(ct);
         HekateDetected = await _probe.IsHekateDetectedAsync(ct);
+
+        ReconcilePersistedState();
         Persist();
+    }
+
+    private void ReconcilePersistedState()
+    {
+        _state.EnsureStages();
+
+        if (_state.LinuxVerified)
+        {
+            var imagePath = _linux.FinalPath(_cache);
+            if (!File.Exists(imagePath))
+            {
+                InvalidateLinuxVerification("Verified Linux image is no longer present in the cache.");
+            }
+            else
+            {
+                var info = new FileInfo(imagePath);
+                var fingerprintKnown = _state.LinuxVerifiedSizeBytes > 0 && _state.LinuxVerifiedLastWriteUtc.HasValue;
+                var unchanged = fingerprintKnown &&
+                                info.Length == _state.LinuxVerifiedSizeBytes &&
+                                info.LastWriteTimeUtc == _state.LinuxVerifiedLastWriteUtc.Value.UtcDateTime;
+
+                if (!fingerprintKnown)
+                    _logger.Info("Legacy Linux verification state detected; destructive operations will re-verify the image.");
+                else if (!unchanged)
+                    InvalidateLinuxVerification("Cached Linux image changed since it was verified.");
+            }
+        }
+
+        if (_state.IsStageComplete(InstallationStage.UsbStoragePreparation) &&
+            !_state.IsStageComplete(InstallationStage.HekateSd) &&
+            HekateDetected)
+        {
+            SetStage(InstallationStage.HekateSd, StageState.Completed, "Hekate configuration detected on a mounted SD card.");
+            _state.CurrentStage = InstallationStage.SwitchConfiguration;
+            _logger.Info("Hekate/SD checkpoint auto-completed from detected SD card contents.");
+        }
+    }
+
+    private void InvalidateLinuxVerification(string reason)
+    {
+        _state.LinuxDownloaded = false;
+        _state.LinuxVerified = false;
+        _state.LinuxVerifiedSizeBytes = 0;
+        _state.LinuxVerifiedLastWriteUtc = null;
+        SetStage(InstallationStage.LinuxImage, StageState.Warning, reason + " Download/verification is required again.");
+        _state.CurrentStage = InstallationStage.LinuxImage;
+        _logger.Warn(reason);
     }
 
     public void SelectDisk(DiskInfo? disk)
@@ -97,18 +163,24 @@ public sealed class InstallationEngine
     {
         _state.LinuxDownloaded = false;
         _state.LinuxVerified = false;
+        _state.LinuxVerifiedSizeBytes = 0;
+        _state.LinuxVerifiedLastWriteUtc = null;
         SetStage(InstallationStage.LinuxImage, StageState.Running, "Downloading Linux image.");
         Persist();
         await _linux.DownloadAsync(_cache, progress, ct);
-        var ok = await _linux.VerifySha1Async(_linux.FinalPath(_cache), ct);
+        var path = _linux.FinalPath(_cache);
+        var ok = await _linux.VerifySha1Async(path, ct);
         if (!ok) throw new InvalidDataException("Linux image SHA-1 verification failed.");
+
+        var info = new FileInfo(path);
         _state.LinuxDownloaded = true;
         _state.LinuxVerified = true;
+        _state.LinuxVerifiedSizeBytes = info.Length;
+        _state.LinuxVerifiedLastWriteUtc = info.LastWriteTimeUtc;
         SetStage(InstallationStage.LinuxImage, StageState.Completed, "Image verified successfully.");
         _state.CurrentStage = InstallationStage.UsbStoragePreparation;
         Persist();
     }
-
 
     public async Task PrepareUsbAsync(IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
@@ -120,13 +192,9 @@ public sealed class InstallationEngine
         if (!_state.LinuxVerified)
             throw new InvalidOperationException("The Linux image must be verified before writing the USB target.");
 
-        // Never trust only the persisted flag. Re-check the cached archive right
-        // before the destructive workflow so a modified or replaced file cannot
-        // be flashed just because a previous session marked it as verified.
         if (!await _linux.VerifyExistingAsync(_cache, ct))
         {
-            _state.LinuxDownloaded = false;
-            _state.LinuxVerified = false;
+            InvalidateLinuxVerification("Cached image failed final destructive-operation re-verification.");
             Persist();
             throw new InvalidDataException("The cached Linux image is missing, incomplete or failed verification. Download it again before writing the USB.");
         }
@@ -146,8 +214,34 @@ public sealed class InstallationEngine
 
     public void PauseForHardware()
     {
-        SetStage(InstallationStage.UsbStoragePreparation, StageState.WaitingForUser, "Waiting for physical hardware procedure.");
-        _state.CurrentStage = InstallationStage.UsbStoragePreparation;
+        SetStage(_state.CurrentStage, StageState.WaitingForUser, "Waiting for the physical/configuration procedure.");
+        Persist();
+    }
+
+    public void MarkStageCompleted(InstallationStage stage, string message)
+    {
+        if (stage == InstallationStage.Completed)
+        {
+            if (_state.GetResumeStage() != InstallationStage.Completed)
+                throw new InvalidOperationException("Cannot mark the installation completed while earlier checkpoints remain unfinished.");
+            _state.CurrentStage = InstallationStage.Completed;
+            _state.LastSuccessfulRunAt = DateTimeOffset.UtcNow;
+            Persist();
+            return;
+        }
+
+        var resume = _state.GetResumeStage();
+        if (resume != stage)
+            throw new InvalidOperationException($"Cannot complete {stage}; the next required checkpoint is {resume}.");
+
+        SetStage(stage, StageState.Completed, message);
+        var next = Enum.GetValues<InstallationStage>()
+            .Where(x => x > stage && x != InstallationStage.Completed)
+            .Select(x => (InstallationStage?)x)
+            .FirstOrDefault();
+        _state.CurrentStage = next ?? InstallationStage.Completed;
+        if (_state.CurrentStage == InstallationStage.Completed)
+            _state.LastSuccessfulRunAt = DateTimeOffset.UtcNow;
         Persist();
     }
 
@@ -158,11 +252,13 @@ public sealed class InstallationEngine
         record.State = status;
         record.Message = message;
         if (status == StageState.Completed) record.CompletedAt = DateTimeOffset.UtcNow;
+        else if (status is StageState.Running or StageState.Warning or StageState.Failed) record.CompletedAt = null;
         _state.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     private void Persist()
     {
+        _state.EnsureStages();
         _state.UpdatedAt = DateTimeOffset.UtcNow;
         _store.Save(_state);
         StateChanged?.Invoke();
