@@ -9,6 +9,7 @@ public sealed partial class MainForm : Form
     private readonly InstallationEngine _engine;
     private readonly AppLogger _logger;
     private readonly AppConfig _config;
+    private readonly UpdateService _updateService;
 
     private readonly NeonProgressBar _progress = new();
     private readonly StatusCard _rcm = new() { Heading = "SWITCH / RCM" };
@@ -41,6 +42,7 @@ public sealed partial class MainForm : Form
         _engine = engine;
         _logger = logger;
         _config = config;
+        _updateService = new UpdateService(logger);
 
         Text = "MewSwitch Manager";
         StartPosition = FormStartPosition.CenterScreen;
@@ -60,7 +62,11 @@ public sealed partial class MainForm : Form
         _logger.Message += Logger_Message;
         _engine.StateChanged += Engine_StateChanged;
         Resize += (_, _) => ApplyResponsiveLayout();
-        Shown += async (_, _) => await RefreshAsync();
+        Shown += async (_, _) =>
+        {
+            await RefreshAsync();
+            await CheckForUpdatesOnStartupAsync();
+        };
         FormClosing += (_, _) => _operationCts?.Cancel();
         KeyDown += MainForm_KeyDown;
     }
