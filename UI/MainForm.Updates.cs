@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
@@ -5,14 +6,27 @@ namespace MewSwitchManager.UI;
 
 public sealed partial class MainForm
 {
-    private readonly UpdateService _updateService;
     private UpdateInfo? _latestUpdate;
     private readonly Label _updateStatus = new();
     private readonly Label _updateVersion = new();
     private readonly RichTextBox _updateNotes = new();
     private readonly Button _updateCheck = new();
     private readonly Button _updateInstall = new();
-    private readonly Panel _updateCard = new();
+
+    private void InitializeUpdateCenter()
+    {
+        _content.RowCount = Math.Max(_content.RowCount, 7);
+        _content.Controls.Add(BuildUpdateCenterSection(), 0, 6);
+
+        var nav = _sidebar.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
+        if (nav is not null)
+        {
+            nav.Height = 274;
+            var button = NavigationButton("05   UPDATE CENTER", false, 6);
+            button.Width = 194;
+            nav.Controls.Add(button);
+        }
+    }
 
     private Control BuildUpdateCenterSection()
     {
