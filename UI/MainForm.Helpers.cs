@@ -139,7 +139,7 @@ public sealed partial class MainForm
     }
 
     private static string FormatSpeed(double value) => value <= 0 ? "—" : FormatBytes((long)value) + "/s";
-    private static string FormatEta(TimeSpan? eta) => eta is null ? "ETA —" : $"ETA {eta.Value:hh\:mm\:ss}";
+    private static string FormatEta(TimeSpan? eta) => eta is null ? "ETA —" : $"ETA {eta.Value:hh\\:mm\\:ss}";
 
     private void EnableDarkTitleBar()
     {
@@ -155,5 +155,4 @@ public sealed partial class MainForm
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-}
 }
