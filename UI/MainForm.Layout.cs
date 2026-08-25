@@ -268,21 +268,156 @@ public sealed partial class MainForm
         StyleButton(_start, "START USB WRITE", Theme.Red, 142);
         _preflight.Margin = new Padding(0, 0, 8, 0);
         _download.Margin = new Padding(0, 0, 8, 0);
+        _start.Margin = Padding.Empty;
         _preflight.Click += async (_, _) => await RunPreflightAsync();
         _download.Click += async (_, _) => await RunDownloadAsync();
-        _start.Click += async (_, _) => await RunUsbWriteAsync();
+        _start.Click += async (_, _) => await StartInstallationAsync();
         actions.Controls.Add(_preflight);
         actions.Controls.Add(_download);
         actions.Controls.Add(_start);
         layout.Controls.Add(actions, 0, 2);
 
-        _targetHint.Text = "Select a removable USB target. The safety engine will block system disks.";
+        _targetHint.Text = "No USB target selected.";
         _targetHint.Dock = DockStyle.Fill;
         _targetHint.ForeColor = Theme.Muted;
-        _targetHint.Font = Theme.Mono(8);
+        _targetHint.Font = Theme.UI(8.5f);
+        _targetHint.AutoEllipsis = true;
         layout.Controls.Add(_targetHint, 0, 3);
 
         card.Controls.Add(layout);
+        card.Height = 180;
         return card;
     }
+
+    private Control BuildHealthSection()
+    {
+        var host = new Panel { Dock = DockStyle.Fill, Height = 300, BackColor = Theme.Background, Margin = new Padding(0, 0, 0, 12) };
+        var cards = new TableLayoutPanel { Dock = DockStyle.Top, Height = 94, ColumnCount = 4, RowCount = 1, BackColor = Theme.Background, Margin = Padding.Empty };
+        for (var i = 0; i < 4; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        var all = new[] { _rcm, _wsl, _linux, _usb };
+        for (var i = 0; i < all.Length; i++)
+        {
+            all[i].Dock = DockStyle.Fill;
+            all[i].Margin = new Padding(i == 0 ? 0 : 5, 0, i == 3 ? 0 : 5, 0);
+            cards.Controls.Add(all[i], i, 0);
+        }
+        host.Controls.Add(cards);
+
+        _progress.Dock = DockStyle.Top;
+        _progress.Height = 126;
+        _progress.Margin = new Padding(0, 12, 0, 0);
+        host.Controls.Add(_progress);
+        return host;
+    }
+
+    private Control BuildStagesSection()
+    {
+        var card = CreateCard();
+        _stages.Dock = DockStyle.Fill;
+        _stages.Margin = Padding.Empty;
+        _stages.Height = 230;
+        card.Height = 230;
+        card.Padding = Padding.Empty;
+        card.Controls.Add(_stages);
+        return card;
+    }
+
+    private Control BuildLogSection()
+    {
+        var card = CreateCard();
+        card.Height = 300;
+        card.Padding = new Padding(16);
+
+        var title = new Label { Dock = DockStyle.Top, Height = 30, Text = "LIVE OPERATION LOG", ForeColor = Theme.Text, Font = Theme.UI(13, FontStyle.Bold) };
+        var meta = new Label { Dock = DockStyle.Top, Height = 24, Text = "Everything important is written here and to the local log file.", ForeColor = Theme.Muted, Font = Theme.UI(8.5f) };
+        _log.Dock = DockStyle.Fill;
+        _log.ReadOnly = true;
+        _log.BorderStyle = BorderStyle.None;
+        _log.BackColor = Color.FromArgb(4, 5, 8);
+        _log.ForeColor = Theme.Blue;
+        _log.Font = Theme.Mono(8.5f);
+        _log.ScrollBars = RichTextBoxScrollBars.Vertical;
+        _log.DetectUrls = false;
+        _log.Margin = new Padding(0, 8, 0, 0);
+        _log.AccessibleName = "Operation log";
+        card.Controls.Add(_log);
+        card.Controls.Add(meta);
+        card.Controls.Add(title);
+        return card;
+    }
+
+    private Control BuildFooter()
+    {
+        var bar = new Panel { Dock = DockStyle.Fill, Height = 48, BackColor = Theme.Background, Padding = new Padding(2, 10, 2, 0) };
+        _footer.Text = "Safety gates active  •  Download resumable  •  Destructive actions require confirmation";
+        _footer.Dock = DockStyle.Fill;
+        _footer.ForeColor = Theme.Muted;
+        _footer.Font = Theme.Mono(7.5f);
+        _footer.AutoEllipsis = true;
+        bar.Controls.Add(_footer);
+        return bar;
+    }
+
+    private static Panel CreateCard()
+    {
+        var panel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Theme.Surface,
+            Margin = new Padding(0, 0, 0, 12),
+            Padding = new Padding(1)
+        };
+        panel.Paint += (_, e) => Theme.Round(e.Graphics, new Rectangle(0, 0, panel.Width - 1, panel.Height - 1), 14, Theme.Surface, Theme.Border);
+        return panel;
+    }
+
+    private Button NavigationButton(string text, bool active, int sectionIndex)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Width = 180,
+            Height = 42,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 0, 0, 0),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = active ? Theme.Surface2 : Color.Transparent,
+            ForeColor = active ? Theme.Text : Theme.Muted,
+            Font = Theme.Mono(8, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            TabStop = true
+        };
+        button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.MouseOverBackColor = Theme.Surface2;
+        button.Click += (_, _) => ScrollToSection(sectionIndex);
+        return button;
+    }
+
+    private void ScrollToSection(int index)
+    {
+        if (index < 0 || index >= _content.Controls.Count) return;
+        var control = _content.Controls[index];
+        _scrollHost.AutoScrollPosition = new Point(0, Math.Max(0, control.Top - 8));
+        control.Focus();
+    }
+
+    private static void StyleButton(Button button, string text, Color accent, int width)
+    {
+        button.Text = text;
+        button.Width = width;
+        button.Height = 40;
+        button.MinimumSize = new Size(width, 40);
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = accent;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(34, 22, 40);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(45, 28, 50);
+        button.BackColor = Theme.Surface2;
+        button.ForeColor = Theme.Text;
+        button.Font = Theme.Mono(8, FontStyle.Bold);
+        button.Cursor = Cursors.Hand;
+        button.TabStop = true;
+        button.AccessibleName = text;
+    }
+
 }
