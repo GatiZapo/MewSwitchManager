@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 using SharpCompress.Common;
 using MewSwitchManager.Infrastructure;
