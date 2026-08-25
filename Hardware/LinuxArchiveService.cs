@@ -2,6 +2,7 @@ using System.Diagnostics;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 using SharpCompress.Common;
+using SharpCompress.Readers;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
@@ -10,10 +11,13 @@ namespace MewSwitchManager.Hardware;
 /// <summary>
 /// Extracts the Linux distribution archive and resolves the raw image used by the USB writer.
 /// Keeps archive-specific logic out of the destructive USB workflow.
+///
+/// 7z archives are extracted through SharpCompress's sequential reader. This is important for
+/// solid 7z/LZMA archives: repeatedly opening individual archive entries can recreate the
+/// decompression state and make large entries appear to hang near the end of extraction.
 /// </summary>
 public sealed class LinuxArchiveService(AppLogger logger)
 {
-    private const int FileWriteAttempts = 8;
     private const int MoveAttempts = 20;
 
     public async Task<string> PrepareRawImageAsync(
@@ -53,13 +57,11 @@ public sealed class LinuxArchiveService(AppLogger logger)
         IProgress<DownloadProgress>? progress,
         CancellationToken ct)
     {
-        logger.Info($"Extracting Linux archive: {Path.GetFileName(archivePath)}");
+        logger.Info($"Extracting Linux archive sequentially: {Path.GetFileName(archivePath)}");
         await Task.Run(() => ExtractSynchronously(archivePath, destination, progress, ct), ct);
         logger.Info("Linux archive extraction completed.");
     }
 
-    // SharpCompress documents synchronous sequential extraction as the preferred path
-    // for solid 7z/LZMA archives because async extraction can be less efficient.
     private void ExtractSynchronously(
         string archivePath,
         string destination,
@@ -67,20 +69,29 @@ public sealed class LinuxArchiveService(AppLogger logger)
         CancellationToken ct)
     {
         var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        using var archive = SevenZipArchive.OpenArchive(archivePath);
+
+        // ExtractAllEntries() is the SharpCompress path intended for 7z/solid archives.
+        // It keeps the decompression stream sequential instead of reopening each entry.
+        using var archive = SevenZipArchive.OpenArchive(archivePath, ReaderOptions.ForFilePath);
         var entries = archive.Entries.ToArray();
-        var totalBytes = entries.Where(e => !e.IsDirectory).Sum(e => Math.Max(0L, e.Size));
+        var totalBytes = entries
+            .Where(e => !e.IsDirectory)
+            .Sum(e => Math.Max(0L, e.Size));
         var totalEntries = Math.Max(1, entries.Length);
         var useByteProgress = totalBytes > 0;
+
         long completedBytes = 0;
         var completedEntries = 0;
 
         Report(progress, 0, useByteProgress ? totalBytes : totalEntries, "EXTRACTING LINUX IMAGE", "Opening archive...");
 
-        foreach (var entry in entries)
+        using var reader = archive.ExtractAllEntries();
+        while (reader.MoveToNextEntry())
         {
             ct.ThrowIfCancellationRequested();
+            var entry = reader.Entry;
             var key = entry.Key;
+
             if (string.IsNullOrWhiteSpace(key))
             {
                 completedEntries++;
@@ -101,17 +112,34 @@ public sealed class LinuxArchiveService(AppLogger logger)
                 var temporaryPath = outputPath + $".{Guid.NewGuid():N}.mewtmp";
                 try
                 {
-                    WriteEntryWithRetry(
-                        entry,
+                    // The reader owns the decompression state. Do not retry a partially
+                    // consumed entry: retrying the same entry would corrupt the solid-stream
+                    // position. The temporary file is discarded and the whole operation fails
+                    // cleanly if the filesystem reports an I/O error.
+                    using var output = new ProgressFileStream(
                         temporaryPath,
-                        completedBytes,
-                        totalBytes,
-                        completedEntries,
-                        totalEntries,
-                        useByteProgress,
-                        progress,
-                        ct);
+                        written =>
+                        {
+                            var current = completedBytes + written;
+                            Report(
+                                progress,
+                                useByteProgress ? Math.Min(current, totalBytes) : completedEntries,
+                                useByteProgress ? totalBytes : totalEntries,
+                                "EXTRACTING LINUX IMAGE",
+                                $"Extracting {Path.GetFileName(key)}");
+                        });
 
+                    reader.WriteEntryTo(
+                        output,
+                        new ExtractionOptions
+                        {
+                            ExtractFullPath = false,
+                            Overwrite = false,
+                            CheckCrc = true
+                        });
+
+                    output.Flush();
+                    output.Dispose();
                     MoveWithRetry(temporaryPath, outputPath, ct);
                     completedBytes += Math.Max(0L, entry.Size);
                 }
@@ -127,55 +155,6 @@ public sealed class LinuxArchiveService(AppLogger logger)
         }
 
         Report(progress, useByteProgress ? totalBytes : totalEntries, useByteProgress ? totalBytes : totalEntries, "FINALIZING LINUX IMAGE", "Extraction complete. Finalizing files...");
-    }
-
-    private void WriteEntryWithRetry(
-        IArchiveEntry entry,
-        string temporaryPath,
-        long completedBytes,
-        long totalBytes,
-        int completedEntries,
-        int totalEntries,
-        bool useByteProgress,
-        IProgress<DownloadProgress>? progress,
-        CancellationToken ct)
-    {
-        for (var attempt = 1; attempt <= FileWriteAttempts; attempt++)
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                using var output = new ProgressFileStream(
-                    temporaryPath,
-                    written =>
-                    {
-                        var current = completedBytes + written;
-                        Report(
-                            progress,
-                            useByteProgress ? Math.Min(current, totalBytes) : completedEntries,
-                            useByteProgress ? totalBytes : totalEntries,
-                            "EXTRACTING LINUX IMAGE",
-                            $"Extracting {Path.GetFileName(entry.Key)}");
-                    });
-
-                entry.WriteTo(output, new ExtractionOptions
-                {
-                    ExtractFullPath = false,
-                    Overwrite = false,
-                    CheckCrc = true
-                });
-
-                // Closing the stream is enough to flush buffered data. Avoid forcing
-                // a physical disk flush for every archive entry; that can make large
-                // 7z extraction appear frozen at the end of the operation.
-                return;
-            }
-            catch (IOException) when (attempt < FileWriteAttempts)
-            {
-                TryDeleteFile(temporaryPath);
-                Thread.Sleep(150 * attempt);
-            }
-        }
     }
 
     private static void MoveWithRetry(string source, string destination, CancellationToken ct)
@@ -347,6 +326,20 @@ public sealed class LinuxArchiveService(AppLogger logger)
         {
             base.Write(buffer);
             Report(buffer.Length);
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Write(buffer, offset, count);
+            return Task.CompletedTask;
+        }
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Write(buffer.Span);
+            return ValueTask.CompletedTask;
         }
 
         private void Report(int count)
