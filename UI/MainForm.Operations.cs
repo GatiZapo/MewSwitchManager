@@ -206,16 +206,71 @@ public sealed partial class MainForm
         _operationCts = new CancellationTokenSource();
         try
         {
-            SetStatus("●  FLASHING USB", Theme.Pink);
-            _progress.Caption = "FLASHING USB";
+            SetStatus("●  PREPARING USB", Theme.Pink);
+            _progress.Caption = "PREPARING USB";
+            _progress.Detail = "Starting safety checks...";
             _progress.Value = 0;
+            _progress.RightText = "STARTING";
+            _progress.Invalidate();
+
             var progress = new Progress<DownloadProgress>(p =>
             {
-                _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
-                _progress.Detail = $"{FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
-                _progress.RightText = p.TotalBytes is > 0 ? $"{_progress.Value:0}%" : "WRITING";
+                switch (p.Phase)
+                {
+                    case "EXTRACTING LINUX IMAGE":
+                        _progress.Caption = "EXTRACTING LINUX IMAGE";
+                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
+                        _progress.Detail = p.TotalBytes is > 0
+                            ? $"Processing archive entries: {p.BytesReceived:N0} / {p.TotalBytes.Value:N0}"
+                            : "Extracting archive...";
+                        _progress.RightText = $"{_progress.Value:0}%";
+                        SetStatus("●  EXTRACTING IMAGE", Theme.Blue);
+                        break;
+                    case "BUILDING LINUX IMAGE":
+                        _progress.Caption = "BUILDING LINUX IMAGE";
+                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
+                        _progress.Detail = $"Merging image parts: {p.BytesReceived:N0} / {p.TotalBytes ?? 0:N0}";
+                        _progress.RightText = $"{_progress.Value:0}%";
+                        SetStatus("●  BUILDING IMAGE", Theme.Blue);
+                        break;
+                    case "VERIFYING TARGET":
+                        _progress.Caption = "VERIFYING TARGET";
+                        _progress.Value = 0;
+                        _progress.Detail = "Re-checking the USB identity before any destructive operation.";
+                        _progress.RightText = "CHECK";
+                        SetStatus("●  VERIFYING TARGET", Theme.Blue);
+                        break;
+                    case "PARTITIONING USB":
+                        _progress.Caption = "PARTITIONING USB";
+                        _progress.Value = 0;
+                        _progress.Detail = "Creating the target partition. The USB is being modified now.";
+                        _progress.RightText = "WORKING";
+                        SetStatus("●  PARTITIONING USB", Theme.Pink);
+                        break;
+                    case "FLASHING USB":
+                        _progress.Caption = "FLASHING USB";
+                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
+                        _progress.Detail = $"Writing Linux image: {FormatBytes(p.BytesReceived)} / {FormatBytes(p.TotalBytes ?? 0)}";
+                        _progress.RightText = $"{_progress.Value:0}%";
+                        SetStatus("●  FLASHING USB", Theme.Pink);
+                        break;
+                    case "USB FLASH COMPLETE":
+                        _progress.Caption = "USB READY";
+                        _progress.Value = 100;
+                        _progress.Detail = "Linux image written successfully. Continue with the Hekate/SD part of the setup.";
+                        _progress.RightText = "100%";
+                        SetStatus("●  USB READY", Theme.Green);
+                        break;
+                    default:
+                        _progress.Caption = p.Phase;
+                        _progress.Value = p.TotalBytes is > 0 ? p.BytesReceived * 100d / p.TotalBytes.Value : 0;
+                        _progress.Detail = "Working...";
+                        _progress.RightText = p.TotalBytes is > 0 ? $"{_progress.Value:0}%" : "WORKING";
+                        break;
+                }
                 _progress.Invalidate();
             });
+
             await _engine.PrepareUsbAsync(progress, _operationCts.Token);
             _progress.Value = 100;
             _progress.Caption = "USB READY";
