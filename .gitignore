@@ -1,0 +1,17 @@
+# .NET build output
+bin/
+obj/
+dist/
+
+# Local runtime data
+*.user
+*.suo
+.vs/
+
+# MewSwitch runtime cache/state/logs
+MewSwitch/
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
