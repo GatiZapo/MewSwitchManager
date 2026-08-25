@@ -110,7 +110,7 @@ public sealed class UpdateService
             var currentDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var script = Path.Combine(tempRoot, "apply-update.ps1");
             var pid = Environment.ProcessId;
-            var scriptText = $"""
+            var scriptText = $@"
 $ErrorActionPreference = 'Stop'
 $pid = {pid}
 while (Get-Process -Id $pid -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 250 }}
@@ -119,7 +119,7 @@ $target = '{EscapePowerShell(currentDir)}'
 Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
 Start-Process -FilePath '{EscapePowerShell(currentExe)}'
 Remove-Item -LiteralPath '{EscapePowerShell(tempRoot)}' -Recurse -Force -ErrorAction SilentlyContinue
-""";
+";
             await File.WriteAllTextAsync(script, scriptText, ct);
 
             Process.Start(new ProcessStartInfo
