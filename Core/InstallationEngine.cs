@@ -20,6 +20,7 @@ public sealed class InstallationEngine
     private readonly AppConfig _config;
 
     public AppState State => _state;
+    public InstallationStage ResumeStage => _state.GetResumeStage();
     public IReadOnlyList<DiskInfo> Disks { get; private set; } = [];
     public bool WslReady { get; private set; }
     public bool RcmConnected { get; private set; }
@@ -42,6 +43,13 @@ public sealed class InstallationEngine
         _safety = new SafetyEngine();
         _usb = new UsbStorageService(runner, logger, _safety);
         _dependencies = new DependencyService(runner, logger);
+
+        if (!string.Equals(_state.LastKnownAppVersion, _config.AppVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.Info($"State loaded from previous application version: {_state.LastKnownAppVersion ?? "unknown"} -> {_config.AppVersion}.");
+            _state.LastKnownAppVersion = _config.AppVersion;
+            Persist();
+        }
     }
 
     public async Task RefreshAsync(CancellationToken ct = default)
@@ -109,7 +117,6 @@ public sealed class InstallationEngine
         Persist();
     }
 
-
     public async Task PrepareUsbAsync(IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -120,13 +127,12 @@ public sealed class InstallationEngine
         if (!_state.LinuxVerified)
             throw new InvalidOperationException("The Linux image must be verified before writing the USB target.");
 
-        // Never trust only the persisted flag. Re-check the cached archive right
-        // before the destructive workflow so a modified or replaced file cannot
-        // be flashed just because a previous session marked it as verified.
         if (!await _linux.VerifyExistingAsync(_cache, ct))
         {
             _state.LinuxDownloaded = false;
             _state.LinuxVerified = false;
+            SetStage(InstallationStage.LinuxImage, StageState.Warning, "Cached image failed re-verification; download is required again.");
+            _state.CurrentStage = InstallationStage.LinuxImage;
             Persist();
             throw new InvalidDataException("The cached Linux image is missing, incomplete or failed verification. Download it again before writing the USB.");
         }
@@ -146,8 +152,24 @@ public sealed class InstallationEngine
 
     public void PauseForHardware()
     {
-        SetStage(InstallationStage.UsbStoragePreparation, StageState.WaitingForUser, "Waiting for physical hardware procedure.");
-        _state.CurrentStage = InstallationStage.UsbStoragePreparation;
+        SetStage(_state.CurrentStage, StageState.WaitingForUser, "Waiting for physical hardware procedure.");
+        Persist();
+    }
+
+    public void MarkStageCompleted(InstallationStage stage, string message)
+    {
+        if (stage == InstallationStage.Completed)
+        {
+            _state.CurrentStage = InstallationStage.Completed;
+            _state.LastSuccessfulRunAt = DateTimeOffset.UtcNow;
+            Persist();
+            return;
+        }
+
+        SetStage(stage, StageState.Completed, message);
+        _state.CurrentStage = Enum.GetValues<InstallationStage>()
+            .Where(x => x > stage)
+            .FirstOrDefault(InstallationStage.Completed);
         Persist();
     }
 
@@ -158,6 +180,7 @@ public sealed class InstallationEngine
         record.State = status;
         record.Message = message;
         if (status == StageState.Completed) record.CompletedAt = DateTimeOffset.UtcNow;
+        else if (status is StageState.Running or StageState.Warning or StageState.Failed) record.CompletedAt = null;
         _state.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
