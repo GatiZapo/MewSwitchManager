@@ -57,6 +57,7 @@ public sealed partial class MainForm : Form
         DoubleBuffered = true;
 
         BuildUi();
+        InitializeUpdateCenter();
         EnableDarkTitleBar();
 
         _logger.Message += Logger_Message;
