@@ -35,8 +35,8 @@ public sealed partial class MainForm
         _content.AutoSize = true;
         _content.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         _content.ColumnCount = 1;
-        _content.RowCount = 6;
-        for (var i = 0; i < 6; i++) _content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _content.RowCount = 7;
+        for (var i = 0; i < 7; i++) _content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _content.BackColor = Theme.Background;
         _content.Margin = Padding.Empty;
         _content.Padding = Padding.Empty;
@@ -46,10 +46,11 @@ public sealed partial class MainForm
 
         _content.Controls.Add(BuildHeader(), 0, 0);
         _content.Controls.Add(BuildTargetSection(), 0, 1);
-        _content.Controls.Add(BuildHealthSection(), 0, 2);
-        _content.Controls.Add(BuildStagesSection(), 0, 3);
-        _content.Controls.Add(BuildLogSection(), 0, 4);
-        _content.Controls.Add(BuildFooter(), 0, 5);
+        _content.Controls.Add(BuildResumeSection(), 0, 2);
+        _content.Controls.Add(BuildHealthSection(), 0, 3);
+        _content.Controls.Add(BuildStagesSection(), 0, 4);
+        _content.Controls.Add(BuildLogSection(), 0, 5);
+        _content.Controls.Add(BuildFooter(), 0, 6);
 
         BuildCompactNav(root);
         FitContentWidth();
@@ -96,8 +97,9 @@ public sealed partial class MainForm
         };
         nav.Controls.Add(NavigationButton("01   DASHBOARD", true, 0));
         nav.Controls.Add(NavigationButton("02   USB WORKFLOW", false, 1));
-        nav.Controls.Add(NavigationButton("03   DIAGNOSTICS", false, 4));
-        nav.Controls.Add(NavigationButton("04   SAFETY", false, 1));
+        nav.Controls.Add(NavigationButton("03   CHECKPOINTS", false, 2));
+        nav.Controls.Add(NavigationButton("04   DIAGNOSTICS", false, 3));
+        nav.Controls.Add(NavigationButton("05   SAFETY", false, 1));
         foreach (Control control in nav.Controls) control.Width = 180;
 
         var safety = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent, Padding = new Padding(8, 20, 8, 0) };
@@ -113,7 +115,7 @@ public sealed partial class MainForm
         {
             Dock = DockStyle.Top,
             Height = 150,
-            Text = "● Windows system disks blocked\n● USB-only target selection\n● Identity re-check before clean\n● Identity re-check before write\n● Explicit destructive confirmation\n● Download progress is resumable",
+            Text = "● Windows system disks blocked\n● USB-only target selection\n● Saved USB identity re-checked\n● Identity re-check before clean\n● Identity re-check before write\n● Image verification re-checked before flash\n● Download progress is resumable",
             ForeColor = Theme.Muted,
             Font = Theme.UI(8.5f),
             Padding = new Padding(0, 8, 0, 0)
@@ -168,11 +170,11 @@ public sealed partial class MainForm
         };
         var subtitle = new Label
         {
-            Text = "A guarded, resumable workflow for preparing a Switch Linux USB target.",
+            Text = "GUARDED WORKFLOW // STATE PERSISTENCE // SAFE USB TARGETING",
             Dock = DockStyle.Top,
             Height = 28,
             ForeColor = Theme.Muted,
-            Font = Theme.UI(10),
+            Font = Theme.Mono(8.5f, FontStyle.Bold),
             AutoEllipsis = true
         };
         var statusPill = new Panel { Dock = DockStyle.Right, Width = 250, BackColor = Theme.Background, Padding = new Padding(0, 4, 0, 0) };
@@ -289,6 +291,36 @@ public sealed partial class MainForm
         return card;
     }
 
+    private Control BuildResumeSection()
+    {
+        var card = CreateCard();
+        card.Height = 112;
+        card.Padding = new Padding(16);
+
+        var actionHost = new Panel { Dock = DockStyle.Right, Width = 188, Padding = new Padding(10, 12, 0, 0), BackColor = Theme.Surface };
+        StyleButton(_resumeAction, "MARK CHECKPOINT", Theme.Green, 174);
+        _resumeAction.Click += (_, _) => MarkResumeCheckpoint();
+        actionHost.Controls.Add(_resumeAction);
+
+        _resumeTitle.Dock = DockStyle.Top;
+        _resumeTitle.Height = 28;
+        _resumeTitle.Text = "RESUME ENGINE // INITIALIZING";
+        _resumeTitle.ForeColor = Theme.Pink;
+        _resumeTitle.Font = Theme.Mono(10, FontStyle.Bold);
+
+        _resumeDetail.Dock = DockStyle.Fill;
+        _resumeDetail.Text = "Loading persisted installation state...";
+        _resumeDetail.ForeColor = Theme.Muted;
+        _resumeDetail.Font = Theme.UI(8.5f);
+        _resumeDetail.AutoEllipsis = true;
+        _resumeDetail.Padding = new Padding(0, 4, 8, 0);
+
+        card.Controls.Add(_resumeDetail);
+        card.Controls.Add(_resumeTitle);
+        card.Controls.Add(actionHost);
+        return card;
+    }
+
     private Control BuildHealthSection()
     {
         var host = new Panel { Dock = DockStyle.Fill, Height = 300, BackColor = Theme.Background, Margin = new Padding(0, 0, 0, 12) };
@@ -328,8 +360,8 @@ public sealed partial class MainForm
         card.Height = 300;
         card.Padding = new Padding(16);
 
-        var title = new Label { Dock = DockStyle.Top, Height = 30, Text = "LIVE OPERATION LOG", ForeColor = Theme.Text, Font = Theme.UI(13, FontStyle.Bold) };
-        var meta = new Label { Dock = DockStyle.Top, Height = 24, Text = "Everything important is written here and to the local log file.", ForeColor = Theme.Muted, Font = Theme.UI(8.5f) };
+        var title = new Label { Dock = DockStyle.Top, Height = 30, Text = "LIVE OPERATION LOG // TRACE", ForeColor = Theme.Text, Font = Theme.UI(13, FontStyle.Bold) };
+        var meta = new Label { Dock = DockStyle.Top, Height = 24, Text = "Persistent state, hardware probes and destructive gates are logged here.", ForeColor = Theme.Muted, Font = Theme.UI(8.5f) };
         _log.Dock = DockStyle.Fill;
         _log.ReadOnly = true;
         _log.BorderStyle = BorderStyle.None;
@@ -349,7 +381,7 @@ public sealed partial class MainForm
     private Control BuildFooter()
     {
         var bar = new Panel { Dock = DockStyle.Fill, Height = 48, BackColor = Theme.Background, Padding = new Padding(2, 10, 2, 0) };
-        _footer.Text = "Safety gates active  •  Download resumable  •  Destructive actions require confirmation";
+        _footer.Text = "STATE AUTO-SAVED  •  RESUME SAFE  •  USB IDENTITY LOCKED  •  DESTRUCTIVE ACTIONS REQUIRE CONFIRMATION";
         _footer.Dock = DockStyle.Fill;
         _footer.ForeColor = Theme.Muted;
         _footer.Font = Theme.Mono(7.5f);
