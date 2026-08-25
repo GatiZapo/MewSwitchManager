@@ -22,6 +22,9 @@ public sealed partial class MainForm : Form
     private readonly Label _status = new();
     private readonly Label _updateStatus = new();
     private readonly Label _targetHint = new();
+    private readonly Label _resumeTitle = new();
+    private readonly Label _resumeDetail = new();
+    private readonly Button _resumeAction = new();
     private readonly Button _refresh = new();
     private readonly Button _preflight = new();
     private readonly Button _download = new();
