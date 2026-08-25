@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
 using SharpCompress.Common;
 using MewSwitchManager.Infrastructure;
@@ -125,13 +126,11 @@ public sealed class LinuxArchiveService(AppLogger logger)
             Report(progress, current, useByteProgress ? totalBytes : totalEntries, "EXTRACTING LINUX IMAGE", Path.GetFileName(key));
         }
 
-        // Do not report 100% until every entry has been moved into its final location.
-        // The next progress event is a distinct finalization phase.
         Report(progress, useByteProgress ? totalBytes : totalEntries, useByteProgress ? totalBytes : totalEntries, "FINALIZING LINUX IMAGE", "Extraction complete. Finalizing files...");
     }
 
     private void WriteEntryWithRetry(
-        dynamic entry,
+        IArchiveEntry entry,
         string temporaryPath,
         long completedBytes,
         long totalBytes,
