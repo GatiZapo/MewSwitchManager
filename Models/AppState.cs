@@ -2,12 +2,14 @@ namespace MewSwitchManager.Models;
 
 public sealed class AppState
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public InstallationStage CurrentStage { get; set; } = InstallationStage.EnvironmentPreflight;
     public bool LinuxDownloaded { get; set; }
     public bool LinuxVerified { get; set; }
+    public long LinuxVerifiedSizeBytes { get; set; }
+    public DateTimeOffset? LinuxVerifiedLastWriteUtc { get; set; }
     public string SelectedDiskNumber { get; set; } = "";
     public string SelectedDiskIdentity { get; set; } = "";
     public string SelectedDiskUniqueId { get; set; } = "";
@@ -31,17 +33,19 @@ public sealed class AppState
 
         if (SchemaVersion < CurrentSchemaVersion)
             SchemaVersion = CurrentSchemaVersion;
+
+        if (CurrentStage != InstallationStage.Completed)
+        {
+            var firstIncomplete = Stages.FirstOrDefault(x => x.State != StageState.Completed);
+            if (firstIncomplete is not null)
+                CurrentStage = firstIncomplete.Stage;
+        }
     }
 
     public InstallationStage GetResumeStage()
     {
         EnsureStages();
-
-        if (CurrentStage == InstallationStage.Completed)
-            return InstallationStage.Completed;
-
-        var firstIncomplete = Stages.FirstOrDefault(x => x.State != StageState.Completed);
-        return firstIncomplete?.Stage ?? InstallationStage.Completed;
+        return Stages.FirstOrDefault(x => x.State != StageState.Completed)?.Stage ?? InstallationStage.Completed;
     }
 
     public bool IsStageComplete(InstallationStage stage)
