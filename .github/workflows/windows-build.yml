@@ -48,7 +48,7 @@ jobs:
         run: dotnet restore $env:PROJECT
 
       - name: Build Release
-        run: dotnet build $env:PROJECT -c Release --no-restore
+        run: dotnet build $env:PROJECT -c Release --no-restore -p:GitCommit=${{ github.sha }}
 
       - name: Publish self-contained single-file
         shell: pwsh
@@ -60,6 +60,7 @@ jobs:
             -p:PublishSingleFile=true `
             -p:EnableCompressionInSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:GitCommit=${{ github.sha }} `
             --no-restore `
             -o dist
 
