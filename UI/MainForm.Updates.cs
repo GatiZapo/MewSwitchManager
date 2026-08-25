@@ -26,6 +26,21 @@ public sealed partial class MainForm
             button.Width = 194;
             nav.Controls.Add(button);
         }
+
+        var version = _updateService.GetCurrentVersion();
+        ReplaceTextRecursive(_sidebar, "MANAGER  //  0.2 ALPHA", $"MANAGER  //  {version.ToUpperInvariant()}");
+        ReplaceTextRecursive(_compactNav, "0.2 ALPHA", version.ToUpperInvariant());
+    }
+
+    private static void ReplaceTextRecursive(Control parent, string oldText, string newText)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            if (string.Equals(child.Text, oldText, StringComparison.OrdinalIgnoreCase))
+                child.Text = newText;
+            if (child.HasChildren)
+                ReplaceTextRecursive(child, oldText, newText);
+        }
     }
 
     private Control BuildUpdateCenterSection()
