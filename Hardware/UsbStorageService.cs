@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
@@ -42,7 +43,6 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
 
         progress?.Report(new DownloadProgress(0, 1, 0, null, "VERIFYING TARGET"));
 
-        // Final identity gate immediately before the destructive operation.
         var beforeClean = await new DiskService(runner, logger).GetDiskAsync(target.Number, ct);
         safety.DemandStableIdentity(target, beforeClean);
 
@@ -56,7 +56,6 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
 
         await RemoveDriveLetterAsync(diskNumber, partition.Value.PartitionNumber, partition.Value.DriveLetter, ct);
 
-        // One last disk identity check after repartitioning, before opening the volume.
         var afterPartition = await new DiskService(runner, logger).GetDiskAsync(target.Number, ct);
         safety.DemandStableIdentity(target, afterPartition);
 
@@ -100,19 +99,22 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
     private async Task ExtractArchiveAsync(string archivePath, string destination, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
         logger.Info("Extracting Linux archive...");
-        await Task.Run(() => ExtractArchiveWithRetries(archivePath, destination, progress, ct), ct);
+        await Task.Run(() => ExtractArchiveWithProgress(archivePath, destination, progress, ct), ct);
         logger.Info("Linux archive extracted successfully.");
     }
 
-    private void ExtractArchiveWithRetries(string archivePath, string destination, IProgress<DownloadProgress>? progress, CancellationToken ct)
+    private void ExtractArchiveWithProgress(string archivePath, string destination, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
         var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         using var archive = SevenZipArchive.OpenArchive(archivePath);
         var entries = archive.Entries.ToArray();
-        var total = Math.Max(1, entries.Length);
-        var completed = 0;
+        var totalEntries = Math.Max(1, entries.Length);
+        var totalBytes = entries.Where(e => !e.IsDirectory).Sum(e => Math.Max(0L, e.Size));
+        var useByteProgress = totalBytes > 0;
+        var completedEntries = 0;
+        long completedBytes = 0;
 
-        progress?.Report(new DownloadProgress(0, total, 0, null, "EXTRACTING LINUX IMAGE"));
+        progress?.Report(new DownloadProgress(0, useByteProgress ? totalBytes : totalEntries, 0, null, "EXTRACTING LINUX IMAGE"));
 
         foreach (var entry in entries)
         {
@@ -120,7 +122,7 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
             var key = entry.Key;
             if (string.IsNullOrWhiteSpace(key))
             {
-                completed++;
+                completedEntries++;
                 continue;
             }
 
@@ -142,8 +144,9 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
                 var tempPath = outputPath + $".{Guid.NewGuid():N}.mewtmp";
                 try
                 {
-                    WriteEntryToTempWithRetry(entry, tempPath, ct);
+                    WriteEntryToTempWithRetry(entry, tempPath, completedBytes, totalBytes, completedEntries, totalEntries, progress, ct);
                     MoveExtractedFileWithRetry(tempPath, outputPath, ct);
+                    completedBytes += Math.Max(0L, entry.Size);
                 }
                 finally
                 {
@@ -151,12 +154,23 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
                 }
             }
 
-            completed++;
-            progress?.Report(new DownloadProgress(completed, total, 0, null, "EXTRACTING LINUX IMAGE"));
+            completedEntries++;
+            var current = useByteProgress ? Math.Min(totalBytes, completedBytes) : completedEntries;
+            progress?.Report(new DownloadProgress(current, useByteProgress ? totalBytes : totalEntries, 0, null, "EXTRACTING LINUX IMAGE"));
         }
+
+        progress?.Report(new DownloadProgress(useByteProgress ? totalBytes : totalEntries, useByteProgress ? totalBytes : totalEntries, 0, TimeSpan.Zero, "EXTRACTING LINUX IMAGE"));
     }
 
-    private void WriteEntryToTempWithRetry(IArchiveEntry entry, string tempPath, CancellationToken ct)
+    private void WriteEntryToTempWithRetry(
+        IArchiveEntry entry,
+        string tempPath,
+        long completedBytes,
+        long totalBytes,
+        int completedEntries,
+        int totalEntries,
+        IProgress<DownloadProgress>? progress,
+        CancellationToken ct)
     {
         const int attempts = 8;
         for (var attempt = 1; attempt <= attempts; attempt++)
@@ -164,13 +178,22 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
             ct.ThrowIfCancellationRequested();
             try
             {
-                using var output = new FileStream(
+                using var output = new ProgressFileStream(
                     tempPath,
                     FileMode.CreateNew,
                     FileAccess.Write,
                     FileShare.ReadWrite | FileShare.Delete,
                     1024 * 1024,
-                    FileOptions.SequentialScan);
+                    FileOptions.SequentialScan,
+                    written =>
+                    {
+                        var current = completedBytes + written;
+                        if (totalBytes > 0)
+                            progress?.Report(new DownloadProgress(Math.Min(current, totalBytes), totalBytes, 0, null, "EXTRACTING LINUX IMAGE"));
+                        else
+                            progress?.Report(new DownloadProgress(completedEntries, totalEntries, 0, null, "EXTRACTING LINUX IMAGE"));
+                    });
+
                 entry.WriteTo(output, new ExtractionOptions
                 {
                     ExtractFullPath = false,
@@ -190,7 +213,7 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
 
     private void MoveExtractedFileWithRetry(string tempPath, string outputPath, CancellationToken ct)
     {
-        const int attempts = 10;
+        const int attempts = 20;
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
             ct.ThrowIfCancellationRequested();
@@ -201,7 +224,7 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
             }
             catch (IOException) when (attempt < attempts)
             {
-                Thread.Sleep(200 * attempt);
+                Thread.Sleep(250 * attempt);
             }
         }
 
@@ -221,17 +244,25 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
 
     private async Task MergePartsAsync(string[] parts, string output, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
+        var totalBytes = parts.Sum(p => new FileInfo(p).Length);
+        long copiedBytes = 0;
         await using var dest = new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4 * 1024 * 1024, FileOptions.SequentialScan | FileOptions.Asynchronous);
         for (var i = 0; i < parts.Length; i++)
         {
             ct.ThrowIfCancellationRequested();
             logger.Info($"Merging {Path.GetFileName(parts[i])}...");
-            progress?.Report(new DownloadProgress(i, parts.Length, 0, null, "BUILDING LINUX IMAGE"));
             await using var src = new FileStream(parts[i], FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024, FileOptions.SequentialScan | FileOptions.Asynchronous);
-            await src.CopyToAsync(dest, 4 * 1024 * 1024, ct);
+            var buffer = new byte[4 * 1024 * 1024];
+            int read;
+            while ((read = await src.ReadAsync(buffer, ct)) > 0)
+            {
+                await dest.WriteAsync(buffer.AsMemory(0, read), ct);
+                copiedBytes += read;
+                progress?.Report(new DownloadProgress(copiedBytes, totalBytes, 0, null, "BUILDING LINUX IMAGE"));
+            }
         }
         await dest.FlushAsync(ct);
-        progress?.Report(new DownloadProgress(parts.Length, parts.Length, 0, TimeSpan.Zero, "BUILDING LINUX IMAGE"));
+        progress?.Report(new DownloadProgress(totalBytes, totalBytes, 0, TimeSpan.Zero, "BUILDING LINUX IMAGE"));
         logger.Info($"Merged {parts.Length} Linux image parts into ubuntu.raw.");
     }
 
@@ -304,4 +335,45 @@ if ($null -eq $v) {{
     }
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
+
+    private sealed class ProgressFileStream(
+        string path,
+        FileMode mode,
+        FileAccess access,
+        FileShare share,
+        int bufferSize,
+        FileOptions options,
+        Action<long> onProgress) : FileStream(path, mode, access, share, bufferSize, options)
+    {
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private long _lastReported;
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            base.Write(buffer, offset, count);
+            ReportIfNeeded(count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            base.Write(buffer);
+            ReportIfNeeded(buffer.Length);
+        }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await base.WriteAsync(buffer, cancellationToken);
+            ReportIfNeeded(buffer.Length);
+        }
+
+        private void ReportIfNeeded(int written)
+        {
+            _lastReported += written;
+            if (_clock.ElapsedMilliseconds >= 120)
+            {
+                onProgress(_lastReported);
+                _clock.Restart();
+            }
+        }
+    }
 }
