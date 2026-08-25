@@ -42,7 +42,7 @@ public sealed class JsonStore<T> where T : class, new()
             try
             {
                 using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.WriteThrough))
-                using (var writer = new StreamWriter(stream))
+                using (var writer = new StreamWriter(stream, leaveOpen: true))
                 {
                     writer.Write(json);
                     writer.Flush();
