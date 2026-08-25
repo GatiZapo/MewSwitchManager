@@ -38,9 +38,13 @@ public sealed class NeonProgressBar : Control
 
         var right = string.IsNullOrWhiteSpace(RightText) ? "" : RightText;
         var rightWidth = string.IsNullOrEmpty(right) ? 0 : g.MeasureString(right, monoFont).Width;
-        var barX = Math.Clamp(Width / 3, 210, 320);
-        var barWidth = Math.Max(100, Width - barX - (int)rightWidth - 48);
-        var bar = new Rectangle(barX, 42, barWidth, 9);
+
+        // Keep the progress track on its own row. The old layout placed it at y=42,
+        // which caused long captions such as "EXTRACTING LINUX IMAGE" to overlap it.
+        var barY = 61;
+        var barX = 20;
+        var barWidth = Math.Max(120, Width - barX - (int)rightWidth - 58);
+        var bar = new Rectangle(barX, barY, barWidth, 9);
         using (var background = new SolidBrush(Theme.ProgressTrack)) g.FillRectangle(background, bar);
         var fillWidth = (int)Math.Round(bar.Width * (_value / 100d));
         if (fillWidth > 0)
@@ -49,13 +53,13 @@ public sealed class NeonProgressBar : Control
             g.FillRectangle(gradient, new Rectangle(bar.X, bar.Y, fillWidth, bar.Height));
         }
 
-        if (!string.IsNullOrWhiteSpace(right)) g.DrawString(right, monoFont, accent, Width - rightWidth - 20, 38);
-        g.DrawString($"{_value:0}%", monoFont, white, Width - 58, 68);
+        if (!string.IsNullOrWhiteSpace(right)) g.DrawString(right, monoFont, accent, Width - rightWidth - 20, 56);
+        g.DrawString($"{_value:0}%", monoFont, white, Width - 58, 80);
 
         var maxWidth = Math.Max(140, Width - 100);
         var detail = Detail ?? "";
         while (detail.Length > 4 && g.MeasureString(detail, detailFont).Width > maxWidth) detail = detail[..^1];
         if (detail.Length < Detail.Length) detail += "…";
-        g.DrawString(detail, detailFont, muted, 20, 70);
+        g.DrawString(detail, detailFont, muted, 20, 81);
     }
 }
