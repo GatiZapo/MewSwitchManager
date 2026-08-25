@@ -98,7 +98,7 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
         {
             ct.ThrowIfCancellationRequested();
             using var archive = SevenZipArchive.OpenArchive(archivePath);
-            archive.ExtractToDirectory(destination, new ExtractionOptions
+            archive.WriteToDirectory(destination, new ExtractionOptions
             {
                 ExtractFullPath = true,
                 Overwrite = true,
