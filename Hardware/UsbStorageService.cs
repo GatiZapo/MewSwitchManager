@@ -92,21 +92,117 @@ public sealed class UsbStorageService(ProcessRunner runner, AppLogger logger, Me
 
     private async Task ExtractArchiveAsync(string archivePath, string destination, CancellationToken ct)
     {
-        // Do not depend on an external 7-Zip installation. SharpCompress is
-        // bundled into the self-contained build and supports the 7z format.
+        // Windows Defender and other indexers can briefly lock freshly-created files.
+        // Extract each entry to a unique temporary file first, then move it into place
+        // with a short retry window. This avoids SharpCompress trying to overwrite a
+        // file that another process has just opened (notably bootloader.ini).
         logger.Info("Extracting Linux archive...");
-        await Task.Run(() =>
+        await Task.Run(() => ExtractArchiveWithRetries(archivePath, destination, ct), ct);
+        logger.Info("Linux archive extracted successfully.");
+    }
+
+    private void ExtractArchiveWithRetries(string archivePath, string destination, CancellationToken ct)
+    {
+        var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        using var archive = SevenZipArchive.OpenArchive(archivePath);
+
+        foreach (var entry in archive.Entries)
         {
             ct.ThrowIfCancellationRequested();
-            using var archive = SevenZipArchive.OpenArchive(archivePath);
-            archive.WriteToDirectory(destination, new ExtractionOptions
+            var key = entry.Key;
+            if (string.IsNullOrWhiteSpace(key))
+                continue;
+
+            var relative = key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var outputPath = Path.GetFullPath(Path.Combine(destination, relative));
+            if (!outputPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"The Linux archive contains an unsafe path: {key}");
+
+            if (entry.IsDirectory)
             {
-                ExtractFullPath = true,
-                Overwrite = true,
-                CheckCrc = true
-            });
-        }, ct);
-        logger.Info("Linux archive extracted successfully.");
+                Directory.CreateDirectory(outputPath);
+                continue;
+            }
+
+            var parent = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrWhiteSpace(parent))
+                Directory.CreateDirectory(parent);
+
+            var tempPath = outputPath + $".{Guid.NewGuid():N}.mewtmp";
+            try
+            {
+                WriteEntryToTempWithRetry(entry, tempPath, ct);
+                MoveExtractedFileWithRetry(tempPath, outputPath, ct);
+            }
+            finally
+            {
+                TryDeleteFile(tempPath);
+            }
+        }
+    }
+
+    private void WriteEntryToTempWithRetry(IArchiveEntry entry, string tempPath, CancellationToken ct)
+    {
+        const int attempts = 8;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var output = new FileStream(
+                    tempPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    1024 * 1024,
+                    FileOptions.SequentialScan);
+                entry.WriteTo(output, new ExtractionOptions
+                {
+                    ExtractFullPath = false,
+                    Overwrite = false,
+                    CheckCrc = true
+                });
+                output.Flush(flushToDisk: true);
+                return;
+            }
+            catch (IOException) when (attempt < attempts)
+            {
+                TryDeleteFile(tempPath);
+                Thread.Sleep(150 * attempt);
+            }
+        }
+    }
+
+    private void MoveExtractedFileWithRetry(string tempPath, string outputPath, CancellationToken ct)
+    {
+        const int attempts = 10;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                File.Move(tempPath, outputPath, overwrite: true);
+                return;
+            }
+            catch (IOException) when (attempt < attempts)
+            {
+                Thread.Sleep(200 * attempt);
+            }
+        }
+
+        throw new IOException($"Could not finalize extracted file '{outputPath}'. Another process may be holding it open.");
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // Best-effort cleanup; the main operation should report its original error.
+        }
     }
 
     private async Task MergePartsAsync(string[] parts, string output, CancellationToken ct)
