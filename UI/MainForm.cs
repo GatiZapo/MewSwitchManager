@@ -69,6 +69,7 @@ public sealed partial class MainForm : Form
         InitializeEmulationCenter();
         InitializeRecoveryCenter();
         InitializeDiagnostics();
+        InitializeAutoMode();
         InitializeAioShell();
         ApplyVisualPolish();
         EnableDarkTitleBar();
@@ -81,6 +82,7 @@ public sealed partial class MainForm : Form
             ApplyVisualPolish();
             await RefreshAsync();
             RefreshSwitchStorageTargets();
+            RefreshAutoPlan();
             await CheckForUpdatesOnStartupAsync();
         };
         FormClosing += (_, _) => _operationCts?.Cancel();
