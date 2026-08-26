@@ -1,5 +1,4 @@
 using MewSwitchManager.Core;
-using MewSwitchManager.Infrastructure;
 
 namespace MewSwitchManager.UI;
 
@@ -12,7 +11,7 @@ public sealed partial class MainForm
 
     private void InitializeRecoveryCenter()
     {
-        if (_content.Controls.GetControlFromPosition(0, 6) is not null) return;
+        if (_content.GetControlFromPosition(0, 6) is not null) return;
         _content.RowCount = Math.Max(_content.RowCount, 10);
         _content.Controls.Add(BuildRecoverySection(), 0, 6);
     }
@@ -84,7 +83,7 @@ public sealed partial class MainForm
 
     private void OpenRecoveryDataFolder()
     {
-        var paths = AppPaths.Create(_config);
+        var paths = Infrastructure.AppPaths.Create(_config);
         Directory.CreateDirectory(paths.DataDirectory);
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = paths.DataDirectory, UseShellExecute = true });
     }
