@@ -2,7 +2,9 @@ using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Core;
 
-public sealed record SwitchExperienceSummary(
+// Legacy analysis model kept for the older engine API. The dashboard uses
+// MewSwitchManager.Models.SwitchExperienceSummary.
+public sealed record LegacySwitchExperienceSummary(
     string TargetRoot,
     IReadOnlyList<string> Healthy,
     IReadOnlyList<string> Warnings,
@@ -21,7 +23,7 @@ public sealed class SwitchExperienceEngine
         _checkpoints = checkpoints;
     }
 
-    public async Task<SwitchExperienceSummary> AnalyzeAsync(string targetRoot, CancellationToken ct = default)
+    public async Task<LegacySwitchExperienceSummary> AnalyzeAsync(string targetRoot, CancellationToken ct = default)
     {
         var healthy = new List<string>();
         var warnings = new List<string>();
