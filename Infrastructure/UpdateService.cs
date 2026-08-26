@@ -154,7 +154,7 @@ public sealed class UpdateService
         string? assetName = null;
 
         if (available)
-            (assetUrl, assetName) = await FindLatestCiArtifactAsync(ct);
+            (assetUrl, assetName) = await FindLatestCiArtifactAsync(sha, ct);
 
         _logger.Info(available
             ? $"Development update available: {normalizedCurrent[..Math.Min(7, normalizedCurrent.Length)]} -> {shortSha}."
@@ -177,7 +177,7 @@ public sealed class UpdateService
             true);
     }
 
-    private async Task<(string? Url, string? Name)> FindLatestCiArtifactAsync(CancellationToken ct)
+    private async Task<(string? Url, string? Name)> FindLatestCiArtifactAsync(string targetSha, CancellationToken ct)
     {
         using var runsResponse = await _http.GetAsync(ActionsRunsUri, ct);
         if (!runsResponse.IsSuccessStatusCode) return (null, null);
@@ -190,6 +190,9 @@ public sealed class UpdateService
 
         foreach (var run in runs.EnumerateArray())
         {
+            var runSha = GetString(run, "head_sha");
+            if (!string.Equals(runSha, targetSha, StringComparison.OrdinalIgnoreCase)) continue;
+
             var runId = run.TryGetProperty("id", out var id) ? id.GetInt64() : 0;
             if (runId <= 0) continue;
 
