@@ -17,21 +17,6 @@ public sealed partial class MainForm
         _autoModeService = new AutoModeService(_logger);
         _content.RowCount = Math.Max(_content.RowCount, 12);
         _content.Controls.Add(BuildAutoModeSection(), 0, 11);
-        var nav = _sidebar.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
-        if (nav is not null)
-        {
-            var button = NavigationButton("06   AUTO MODE", false, 11);
-            button.Width = 194;
-            nav.Controls.Add(button);
-        }
-        foreach (var label in Flatten(_sidebar).OfType<Label>())
-        {
-            if (label.Text.Contains("0.3 ALPHA", StringComparison.OrdinalIgnoreCase)) label.Text = "MANAGER  //  0.4 ALPHA";
-        }
-        foreach (var label in Flatten(_compactNav).OfType<Label>())
-        {
-            if (label.Text.Contains("0.3 ALPHA", StringComparison.OrdinalIgnoreCase)) label.Text = "0.4 ALPHA";
-        }
         RefreshAutoPlan();
     }
 
