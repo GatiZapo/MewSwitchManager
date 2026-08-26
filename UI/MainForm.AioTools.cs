@@ -16,6 +16,7 @@ public sealed partial class MainForm
         base.OnLoad(e);
         if (_toolInstaller is null) InitializeAioTools(AppPaths.Create(_config));
         InitializeExperience(AppPaths.Create(_config));
+        InitializeRecoveryCenter();
         Shown += async (_, _) => await RefreshExperienceAsync();
     }
 
