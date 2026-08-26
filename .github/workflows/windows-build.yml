@@ -1,4 +1,4 @@
-name: MewSwitch Manager — Windows CI
+name: MewNX — Windows CI
 
 on:
   push:
@@ -33,66 +33,44 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-
       - name: Clean stale output
         shell: pwsh
-        run: |
-          Remove-Item -Recurse -Force bin,obj,dist -ErrorAction SilentlyContinue
-
+        run: Remove-Item -Recurse -Force bin,obj,dist -ErrorAction SilentlyContinue
       - name: Restore
         run: dotnet restore $env:PROJECT
-
       - name: Build Release
         run: dotnet build $env:PROJECT -c Release --no-restore -p:GitCommit=${{ github.sha }}
-
       - name: Publish self-contained single-file
         shell: pwsh
         run: |
-          dotnet publish $env:PROJECT `
-            -c Release `
-            -r ${{ matrix.rid }} `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:EnableCompressionInSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:GitCommit=${{ github.sha }} `
-            --no-restore `
-            -o dist
-
+          dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GitCommit=${{ github.sha }} --no-restore -o dist
       - name: Validate artifact
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD 'dist/MewSwitch Manager.exe'
+          $exe = Join-Path $PWD 'dist/MewNX.exe'
           $cfg = Join-Path $PWD 'dist/appsettings.json'
-          if (-not (Test-Path $exe)) { throw 'Published EXE was not generated.' }
+          if (-not (Test-Path $exe)) { throw 'Published MewNX EXE was not generated.' }
           if (-not (Test-Path $cfg)) { throw 'appsettings.json was not published.' }
           $size = (Get-Item $exe).Length
           if ($size -lt 1000000) { throw "Published EXE is unexpectedly small: $size bytes" }
-          Write-Host "${{ matrix.arch }} EXE OK: $size bytes"
-
+          Write-Host "${{ matrix.arch }} MewNX OK: $size bytes"
       - name: Create SHA-256 checksum
         shell: pwsh
         run: |
-          (Get-FileHash 'dist/MewSwitch Manager.exe' -Algorithm SHA256).Hash + '  MewSwitch Manager.exe' | Set-Content 'dist/SHA256SUMS.txt'
-
+          (Get-FileHash 'dist/MewNX.exe' -Algorithm SHA256).Hash + '  MewNX.exe' | Set-Content 'dist/SHA256SUMS.txt'
       - name: Package Windows artifact
         shell: pwsh
         run: |
-          Compress-Archive `
-            -Path 'dist/MewSwitch Manager.exe','dist/appsettings.json','dist/SHA256SUMS.txt' `
-            -DestinationPath 'MewSwitch-Manager-${{ matrix.arch }}.zip' `
-            -Force
-
+          Compress-Archive -Path 'dist/MewNX.exe','dist/appsettings.json','dist/SHA256SUMS.txt' -DestinationPath 'MewNX-${{ matrix.arch }}.zip' -Force
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MewSwitch-Manager-${{ matrix.arch }}
-          path: MewSwitch-Manager-${{ matrix.arch }}.zip
+          name: MewNX-${{ matrix.arch }}
+          path: MewNX-${{ matrix.arch }}.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -103,24 +81,22 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Download x64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: MewSwitch-Manager-x64
+          name: MewNX-x64
           path: release
       - name: Download ARM64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: MewSwitch-Manager-arm64
+          name: MewNX-arm64
           path: release
       - name: Download x86 artifact
         uses: actions/download-artifact@v4
         with:
-          name: MewSwitch-Manager-x86
+          name: MewNX-x86
           path: release
-
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
