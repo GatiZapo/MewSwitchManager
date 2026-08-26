@@ -32,9 +32,6 @@ public sealed class SwitchToolInstaller
         Directory.CreateDirectory(cache);
         var file = Path.Combine(cache, Sanitize(asset.Name));
         await _releases.DownloadResumableAsync(asset.Url, file, progress, ct);
-
-        // Downloads stay in .part until integrity verification succeeds. This is
-        // what makes interrupted downloads resumable without promoting corrupt data.
         var part = file + ".part";
         await VerifyAsync(part, asset.Digest, ct);
         _releases.PromotePart(file);
@@ -117,7 +114,9 @@ public sealed class SwitchToolInstaller
         using var archive = ArchiveFactory.OpenArchive(archivePath);
         foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
         {
-            var relative = entry.Key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var key = entry.Key;
+            if (string.IsNullOrWhiteSpace(key)) throw new InvalidDataException("Archive contains an entry without a path.");
+            var relative = key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
             var full = Path.GetFullPath(Path.Combine(destination, relative));
             if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Archive contains an unsafe path.");
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
@@ -155,10 +154,8 @@ public sealed class SwitchToolInstaller
             else if (Directory.Exists(destination)) Directory.Delete(destination, true);
             return;
         }
-
         if (File.Exists(destination)) File.Delete(destination);
         else if (Directory.Exists(destination)) Directory.Delete(destination, true);
-
         var backupPath = Path.Combine(backup, relative);
         if (File.Exists(backupPath))
         {
