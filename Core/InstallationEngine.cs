@@ -36,7 +36,7 @@ public sealed class InstallationEngine
         _logger = logger;
         _config = config;
         _cache = paths.CacheDirectory;
-        var runner = new ProcessRunner();
+        var runner = new ProcessRunner(logger);
         _disks = new DiskService(runner, logger);
         _probe = new SystemProbe(runner, logger);
         _linux = new LinuxImageService(new HttpClient(), logger, config);
@@ -83,7 +83,7 @@ public sealed class InstallationEngine
     public async Task PreflightAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("MewSwitch Manager requires Windows.");
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("MewNX requires Windows.");
         await _dependencies.EnsureAsync(installOptional: _config.Dependencies.AutoInstallMissing && _config.Dependencies.InstallWslIfMissing, ct);
         await RefreshAsync(ct);
         var target = Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber);
