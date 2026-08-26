@@ -13,7 +13,7 @@ public sealed class SwitchComponentManager
     [
         new(SwitchComponent.Hekate, "Hekate / Nyx", "CTCaer/hekate", "bootloader/update.bin", "Bootloader and Nyx", ".zip"),
         new(SwitchComponent.Atmosphere, "Atmosphère", "Atmosphere-NX/Atmosphere", "atmosphere/package3", "CFW core", ".zip"),
-        new(SwitchComponent.Dbi, "DBI", "rashevskyv/dbi", "switch/DBI.nro", "Homebrew installer / file manager", ".zip"),
+        new(SwitchComponent.Dbi, "DBI (official English)", "rashevskyv/dbi", Path.Combine("switch", "DBI", "DBI.nro"), "Homebrew installer / file manager", ".nro"),
         new(SwitchComponent.Linux, "Switchroot Linux", "", "bootloader/hekate_ipl.ini", "Linux stack managed by the Linux workflow", "", true),
         new(SwitchComponent.Tools, "Supporting tools", "", "switch", "Additional homebrew and utilities", ".zip")
     ];
@@ -54,7 +54,7 @@ public sealed class SwitchComponentManager
 
             try
             {
-                var release = await _releases.GetLatestAsync(definition.Repository, ct);
+                var release = await GetReleaseAsync(definition, ct);
                 result.Add(new ComponentStatus(definition, installed, installedVersion, release.TagName, release.HtmlUrl, installed && installedVersion != "Detected" && CompareVersions(installedVersion, release.TagName) < 0, release.Name));
             }
             catch (Exception ex)
@@ -77,49 +77,58 @@ public sealed class SwitchComponentManager
             throw new InvalidOperationException($"{definition.Name} is not yet an automatic release component.");
         if (!Directory.Exists(targetRoot)) throw new DirectoryNotFoundException(targetRoot);
 
-        var release = await _releases.GetLatestAsync(definition.Repository, ct);
+        var release = await GetReleaseAsync(definition, ct);
         var asset = SelectAsset(definition, release);
-        if (asset is null) throw new InvalidOperationException($"No suitable release archive was found for {definition.Name} in {release.TagName}.");
+        if (asset is null) throw new InvalidOperationException($"No suitable release asset was found for {definition.Name} in {release.TagName}.");
 
         var componentCache = Path.Combine(_paths.CacheDirectory, "components", component.ToString());
         Directory.CreateDirectory(componentCache);
-        var archive = Path.Combine(componentCache, SanitizeFileName(asset.Name));
-        await _releases.DownloadResumableAsync(asset.Url, archive, progress, ct);
-        VerifyArchiveFile(archive);
+        var downloadPath = Path.Combine(componentCache, SanitizeFileName(asset.Name));
+        await _releases.DownloadResumableAsync(asset.Url, downloadPath, progress, ct);
+        VerifyDownloadedFile(downloadPath);
 
-        var stage = Path.Combine(componentCache, "staging", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(stage);
-        try
+        if (component == SwitchComponent.Dbi)
         {
-            ExtractSafe(archive, stage);
-            var sourceRoot = FindPayloadRoot(stage, definition.DetectionPath);
             BackupBeforeUpdate(targetRoot, definition, release.TagName);
-            MergeDirectory(sourceRoot, targetRoot);
-            if (!File.Exists(Path.Combine(targetRoot, definition.DetectionPath)))
-                throw new InvalidDataException($"The downloaded archive did not produce the expected {definition.DetectionPath}.");
-
-            _state.LastTargetRoot = targetRoot;
-            _state.LastKnownVersions[component.ToString()] = release.TagName;
-            _state.UpdatedAt = DateTimeOffset.UtcNow;
-            new JsonStore<ComponentManagerState>(_stateFile).Save(_state);
-            _logger.Info($"{definition.Name} updated to {release.TagName} on {targetRoot}.");
-            return new ComponentStatus(definition, true, release.TagName, release.TagName, release.HtmlUrl, false, "Updated successfully; existing configuration was preserved where files overlapped.");
+            var destination = Path.Combine(targetRoot, "switch", "DBI", "DBI.nro");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(downloadPath, destination, true);
+            if (!File.Exists(destination)) throw new IOException("DBI.nro was not written to the SD card.");
         }
-        finally
+        else
         {
-            TryDeleteDirectory(stage);
+            var stage = Path.Combine(componentCache, "staging", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(stage);
+            try
+            {
+                ExtractSafe(downloadPath, stage);
+                var sourceRoot = FindPayloadRoot(stage, definition.DetectionPath);
+                BackupBeforeUpdate(targetRoot, definition, release.TagName);
+                MergeDirectory(sourceRoot, targetRoot);
+                if (!File.Exists(Path.Combine(targetRoot, definition.DetectionPath)))
+                    throw new InvalidDataException($"The downloaded archive did not produce the expected {definition.DetectionPath}.");
+            }
+            finally { TryDeleteDirectory(stage); }
         }
+
+        _state.LastTargetRoot = targetRoot;
+        _state.LastKnownVersions[component.ToString()] = release.TagName;
+        _state.UpdatedAt = DateTimeOffset.UtcNow;
+        new JsonStore<ComponentManagerState>(_stateFile).Save(_state);
+        _logger.Info($"{definition.Name} updated to {release.TagName} on {targetRoot}.");
+        return new ComponentStatus(definition, true, release.TagName, release.TagName, release.HtmlUrl, false, "Updated successfully; existing configuration was preserved where files overlapped.");
     }
+
+    private Task<GitHubRelease> GetReleaseAsync(ComponentDefinition definition, CancellationToken ct)
+        => definition.Id == SwitchComponent.Dbi
+            ? _releases.GetTagAsync(definition.Repository, "658", ct)
+            : _releases.GetLatestAsync(definition.Repository, ct);
 
     private static GitHubAsset? SelectAsset(ComponentDefinition definition, GitHubRelease release)
     {
         var assets = release.Assets.Where(a => a.Size > 0).ToList();
         if (definition.Id == SwitchComponent.Dbi)
-        {
-            // Prefer an archive containing DBI rather than a source archive or a language-only package.
-            return assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && a.Name.Contains("DBI", StringComparison.OrdinalIgnoreCase))
-                ?? assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
-        }
+            return assets.FirstOrDefault(a => string.Equals(a.Name, "DBI.nro", StringComparison.OrdinalIgnoreCase));
 
         return assets.FirstOrDefault(a => a.Name.EndsWith(definition.ArchiveHint, StringComparison.OrdinalIgnoreCase)
                                           && !a.Name.Contains("source", StringComparison.OrdinalIgnoreCase)
@@ -143,9 +152,9 @@ public sealed class SwitchComponentManager
         System.Text.RegularExpressions.Regex.Matches(value, @"\d+")
             .Select(m => int.TryParse(m.Value, out var n) ? n : 0).ToList();
 
-    private static void VerifyArchiveFile(string path)
+    private static void VerifyDownloadedFile(string path)
     {
-        if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new InvalidDataException("Component archive is empty or missing.");
+        if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new InvalidDataException("Downloaded component is empty or missing.");
         using var stream = File.OpenRead(path);
         using var sha = SHA256.Create();
         _ = sha.ComputeHash(stream);
@@ -179,7 +188,7 @@ public sealed class SwitchComponentManager
         {
             SwitchComponent.Hekate => new[] { "bootloader" },
             SwitchComponent.Atmosphere => new[] { "atmosphere" },
-            SwitchComponent.Dbi => new[] { Path.Combine("switch", "DBI.nro") },
+            SwitchComponent.Dbi => new[] { Path.Combine("switch", "DBI") },
             _ => Array.Empty<string>()
         };
         if (candidates.Length == 0) return;
