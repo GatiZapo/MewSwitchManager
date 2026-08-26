@@ -2,7 +2,7 @@ name: MewSwitch Manager — vNext validation
 
 on:
   push:
-    branches: [feature/manager-vnext]
+    branches: [main, feature/manager-vnext]
   pull_request:
     branches: [main]
   workflow_dispatch:
