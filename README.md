@@ -1,48 +1,49 @@
-# MewSwitch Manager 0.2 ALPHA
+# MewSwitch Manager 0.4 ALPHA
 
-MewSwitch Manager is a Windows-first, safety-focused assistant for preparing a USB Linux target for Nintendo Switch / Switchroot L4T.
+MewSwitch Manager is a Windows-first, safety-focused Nintendo Switch utility. It combines the guarded Switchroot/Linux preparation workflow with a separate component manager for maintaining Switch storage.
 
-## What changed in 0.2
+## What changed in 0.4
 
-- Refactored the UI into a responsive, DPI-aware dashboard.
-- Added compact layout for small Windows screens and Windows tablets.
-- Added keyboard shortcuts: **F5** refresh, **Esc** cancel an active operation.
-- Added single-instance protection so two MewSwitch processes cannot touch the same USB.
-- Added native Windows volume writing instead of writing to a physical disk offset.
-- Added a final disk identity check after partition creation and immediately before the write.
-- Added in-process 7z extraction using SharpCompress; no 7-Zip installation is required.
-- Kept resumable Linux image downloads using a persistent `.part` file.
-- Added SHA-1 verification before any destructive USB operation.
-- Added native Windows builds for **x64, ARM64 and x86**.
-- Removed automatic WSL installation by default. Missing optional components are reported instead of silently changing Windows.
+- Persistent workflow reconciliation when a new Manager version starts.
+- Resumable component downloads using `.part` files as well as the existing Linux image resume flow.
+- Automatic removable/fixed-drive detection for Switch SD cards with Switch-folder signatures.
+- New **SWITCH MANAGER** section for Hekate / Nyx, Atmosphère and DBI.
+- Official GitHub release channels are queried directly.
+- Component archives are staged before installation and protected against archive path traversal.
+- GitHub release SHA-256 asset digests are verified when published.
+- Existing Hekate, Atmosphère and DBI data is backed up before an update.
+- Component merges preserve existing configuration instead of deleting the component directory first.
+- Failed component updates attempt automatic rollback from the pre-update backup.
+- DBI is deliberately pinned to the official English release channel instead of blindly selecting the newest Russian-only release.
+- Added an RCM helper that detects the RCM USB device and explains the physical entry procedure.
+- Linux preparation remains isolated behind the existing SafetyEngine and destructive confirmations.
+- Manager self-update remains available through UPDATE CENTER.
+
+## Switch component manager
+
+The manager currently handles:
+
+1. **Hekate / Nyx** — detects `bootloader/update.bin`, checks the official latest release, backs up `bootloader`, then merges the new release.
+2. **Atmosphère** — detects `atmosphere/package3`, checks the official latest release, backs up `atmosphere`, then merges the new release.
+3. **DBI** — uses the official English release channel and installs `switch/DBI/DBI.nro` with a backup of the existing DBI directory.
+
+Linux/Switchroot remains a dedicated workflow because it may involve destructive disk operations. Supporting tools are represented in the manager architecture but are not yet blindly auto-installed.
+
+## RCM
+
+MewSwitch Manager can detect a Nintendo Switch already exposing the RCM USB device. It cannot safely force a normal retail Switch from Horizon into RCM over USB: the console must already be in RCM before a payload can be injected. The manager therefore provides an RCM guide rather than pretending a USB reset can enter RCM.
+
+AutoRCM is intentionally not modified automatically. It changes boot-related storage and should remain a separate, explicitly controlled operation.
+
+## Safety model
+
+MewSwitch Manager does not expose Windows boot/system disks as selectable destructive USB targets. The Linux workflow rejects disks that are not safe USB candidates, re-checks target identity before destructive operations, and requires explicit confirmation.
+
+Component updates are deliberately independent from the destructive Linux workflow. A failed component download or verification never starts a disk write.
 
 ## Supported host
 
 Windows 10 1809+ / Windows 11 on x64, ARM64 or x86, subject to the hardware and driver requirements of the connected Switch and USB controller.
-
-The application requests administrator privileges because DiskPart and direct volume access are destructive system-level operations.
-
-## Safety model
-
-MewSwitch Manager does not expose Windows boot/system disks as selectable USB targets. It rejects disks that are:
-
-- not USB
-- Windows boot/system/recovery/pagefile related
-- offline
-- read-only
-- otherwise marked unsafe by Windows
-
-The target identity is captured and checked again immediately before `clean`. It is checked again after the new partition is created, before the image is opened for writing.
-
-A destructive operation also requires two explicit confirmations, including typing `WRITE DISK N`.
-
-## Switchroot USB method
-
-The USB workflow follows the Switchroot USB/eMMC documentation: create a partition on the USB device and write the Linux raw image to the **partition**, not the Windows physical disk as a whole.
-
-The current Noble release is based on Ubuntu 24.04 and the Switchroot documentation lists Hekate 6.0.6+ as required for the 5.1.2 release.
-
-MewSwitch Manager does not replace the Hekate/SD configuration steps. It prepares the USB portion and then leaves the user at the appropriate physical/configuration hand-off stage.
 
 ## Build
 
@@ -50,28 +51,20 @@ MewSwitch Manager does not replace the Hekate/SD configuration steps. It prepare
 build.cmd
 ```
 
-The script publishes:
-
-```text
-dist/win-x64/
-dist/win-arm64/
-dist/win-x86/
-```
-
-GitHub Actions produces the same three architectures and packages each as a separate ZIP with SHA-256 checksums.
+GitHub Actions builds self-contained Windows packages for **x64, ARM64 and x86** and generates SHA-256 checksums.
 
 ## Project structure
 
 ```text
-Core/             workflow and safety orchestration
-Hardware/         Windows disks, USB and native volume writer
-Infrastructure/   persistence, logging, processes and dependencies
+Core/             workflow, safety and Switch component management
+Hardware/         Windows disks, USB, storage and RCM detection
+Infrastructure/   persistence, logging, processes and GitHub releases
 Linux/            Linux image download, resume and verification
-Models/           persistent state and configuration
+Models/           persistent workflow/component state and configuration
 UI/               responsive WinForms interface
 .github/          CI and release workflows
 ```
 
 ## Important
 
-This is still **ALPHA**. Never use the destructive USB write against a device containing data you cannot restore. Verify the selected disk, its model and its capacity before confirming the final write.
+This is still **ALPHA**. Never use the destructive USB workflow against a device containing data you cannot restore. Verify the selected disk, model and capacity before confirming the final write. Component updates should also be performed with the SD card mounted from the Switch fully powered down.
