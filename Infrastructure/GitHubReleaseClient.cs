@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Infrastructure;
 
@@ -9,11 +10,9 @@ public sealed record GitHubRelease(string TagName, string Name, string HtmlUrl, 
 public sealed class GitHubReleaseClient
 {
     private readonly HttpClient _http;
-    private readonly AppLogger _logger;
 
     public GitHubReleaseClient(AppLogger logger)
     {
-        _logger = logger;
         _http = new HttpClient();
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MewSwitchManager", "0.4"));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
@@ -53,13 +52,13 @@ public sealed class GitHubReleaseClient
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         if (existing > 0) request.Headers.Range = new RangeHeaderValue(existing, null);
-
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+
         if (existing > 0 && response.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable)
         {
+            response.Dispose();
             File.Delete(part);
             existing = 0;
-            response.Dispose();
             using var retry = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             retry.EnsureSuccessStatusCode();
             await CopyToPartAsync(retry, part, 0, progress, ct);
