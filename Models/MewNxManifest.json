@@ -1,10 +1,17 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "product": "MewNX",
+  "sourcePolicy": {
+    "official": true,
+    "userConfigured": true,
+    "genericWebScraping": false,
+    "unauthorizedGameDumps": false
+  },
   "components": [
     { "id": "hekate", "name": "Hekate / Nyx", "channel": "stable", "dependencies": [] },
     { "id": "atmosphere", "name": "Atmosphere", "channel": "stable", "dependencies": ["hekate"] },
     { "id": "dbi", "name": "DBI", "channel": "stable", "dependencies": ["atmosphere"] },
+    { "id": "awoo-installer", "name": "Awoo Installer", "channel": "stable", "dependencies": ["atmosphere"] },
     { "id": "nx-ovlloader", "name": "nx-ovlloader", "channel": "stable", "dependencies": ["atmosphere"] },
     { "id": "tesla-menu", "name": "Tesla Menu", "channel": "stable", "dependencies": ["nx-ovlloader"] },
     { "id": "status-monitor", "name": "Status Monitor Overlay", "channel": "stable", "dependencies": ["nx-ovlloader"] },
@@ -12,6 +19,23 @@
     { "id": "fpslocker", "name": "FPSLocker", "channel": "stable", "dependencies": ["nx-ovlloader"] },
     { "id": "ultrahand", "name": "Ultrahand Overlay", "channel": "stable", "dependencies": ["nx-ovlloader"] },
     { "id": "checkpoint", "name": "Checkpoint", "channel": "stable", "dependencies": ["atmosphere"] },
-    { "id": "jksv", "name": "JKSV", "channel": "stable", "dependencies": ["atmosphere"] }
+    { "id": "jksv", "name": "JKSV", "channel": "stable", "dependencies": ["atmosphere"] },
+
+    { "id": "tico", "name": "tico", "channel": "stable", "dependencies": [] },
+    { "id": "retroarch", "name": "RetroArch Switch stable bundle", "channel": "stable", "dependencies": ["atmosphere"] },
+    { "id": "tico-fceumm", "name": "tico FCEUmm", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-snes9x", "name": "tico Snes9x", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-mupen64", "name": "tico Mupen64Plus", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-dolphin", "name": "tico Dolphin", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-gambatte", "name": "tico Gambatte", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-mgba", "name": "tico mGBA", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-azahar", "name": "tico Azahar", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-genesis", "name": "tico Genesis Plus GX", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-yabause", "name": "tico YabaSanshiro", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-flycast", "name": "tico Flycast", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-fbneo", "name": "tico FinalBurn Neo", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-duckstation", "name": "tico DuckStation", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-ppsspp", "name": "tico PPSSPP", "channel": "stable", "dependencies": ["tico"] },
+    { "id": "tico-melonds", "name": "tico melonDS", "channel": "source-validated", "dependencies": ["tico"] }
   ]
 }
