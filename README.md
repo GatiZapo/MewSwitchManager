@@ -4,10 +4,13 @@
 
 ## AIO experience
 
-- Separate **Home, Install, Switch Tools, Emulation, Game Center, Recovery, Diagnostics and Updates** sections instead of one long dashboard.
+- Separate **Home, Install, Switch Tools, Emulation, Game Center, Recovery, Diagnostics, Auto Mode and Updates** sections instead of one long dashboard.
+- **Auto Mode** builds a persisted operation plan, reconciles it with the real installation state and automatically runs only the safe, resumable steps.
+- Auto Mode stops at destructive or hardware-dependent checkpoints and never bypasses the existing safety confirmations.
 - The active operation stays pinned above every section, so downloads, verification, extraction and USB writes remain visible while navigating.
 - Technical state is presented with compact monospace telemetry, strong borders and MewNX neon pink/blue accents on a near-black canvas.
 - Persistent operation/error logs are written to the MewNX application data directory for post-mortem troubleshooting.
+- System Diagnostics can validate Windows, storage, WSL, RCM, Hekate/SD detection, the cached Linux image and persisted workflow state.
 - MewNX keeps resumable downloads and reconciles persisted workflow state when a new build starts.
 - The application, installer, taskbar/window identity and published artifacts use the MewNX brand.
 
@@ -59,12 +62,15 @@ MewNX does not ship warez-site lists, scrape unauthorised game-dump pages or aut
 - **Transactional deployment:** resolve → resumable fetch → verify → stage → validate → deploy → checkpoint commit.
 - **Safety Engine:** backend state is authoritative; the UI never shows a green state before the corresponding check succeeds.
 - **Dependency graph:** components declare dependencies as data and are installed in dependency order.
+- **Persisted planning:** Auto Mode stores its checkpoint in application state so a new build can resume from the actual completed stage instead of blindly repeating work.
 
 See `docs/MEWNX_AIO_ARCHITECTURE.md` for the complete architecture and source policy.
 
 ## What changed in 0.4
 
 - Persistent workflow reconciliation when a new MewNX version starts.
+- Persisted **Auto Mode** operation planning with explicit user/hardware safety gates.
+- Added System Diagnostics and surfaced its results in the main UI.
 - Resumable component downloads using `.part` files as well as the existing Linux image resume flow.
 - Automatic removable/fixed-drive detection for Switch SD cards with Switch-folder signatures.
 - **SWITCH HEALTH** dashboard for Hekate / Nyx, Atmosphère, emuMMC, tools and configuration.
@@ -86,5 +92,7 @@ MewNX keeps a persistent log at the application data directory shown in the UI. 
 ## Windows distribution
 
 The Windows CI produces self-contained single-file x64, ARM64 and x86 builds plus an x64 Inno Setup installer. Published artifacts include SHA-256 checksums.
+
+The CI uses current Node 24-compatible GitHub Actions runtimes for checkout, .NET setup and artifact upload, avoiding the Node 20 deprecation warnings emitted by the older action versions.
 
 For Smart App Control / antivirus reputation, the release pipeline is prepared for Authenticode signing when the project's Windows signing certificate is configured in GitHub Actions secrets. A certificate is required to obtain trusted Windows reputation; no application can honestly guarantee that Smart App Control will accept an unsigned executable.
