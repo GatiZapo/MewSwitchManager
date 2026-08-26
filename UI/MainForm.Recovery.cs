@@ -12,7 +12,6 @@ public sealed partial class MainForm
 
     private void InitializeRecoveryCenter()
     {
-        if (_content.GetControlFromPosition(0, 9) is not null) return;
         _content.RowCount = Math.Max(_content.RowCount, 10);
         _content.Controls.Add(BuildRecoverySection(), 0, 9);
     }
