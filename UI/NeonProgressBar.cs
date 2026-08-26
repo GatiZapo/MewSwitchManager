@@ -10,7 +10,8 @@ public sealed class NeonProgressBar : Control
 
     public NeonProgressBar()
     {
-        Height = 126;
+        Height = 138;
+        MinimumSize = new Size(320, 132);
         DoubleBuffered = true;
         BackColor = Theme.Background;
         AccessibleRole = AccessibleRole.ProgressBar;
@@ -34,32 +35,41 @@ public sealed class NeonProgressBar : Control
         using var monoFont = Theme.Mono(8, FontStyle.Bold);
 
         g.DrawString("INSTALLATION HEALTH", labelFont, muted, 20, 12);
-        g.DrawString(Caption, titleFont, title, 20, 31);
 
-        var right = string.IsNullOrWhiteSpace(RightText) ? "" : RightText;
-        var rightWidth = string.IsNullOrEmpty(right) ? 0 : g.MeasureString(right, monoFont).Width;
+        var caption = Caption ?? string.Empty;
+        var right = RightText ?? string.Empty;
+        var rightWidth = string.IsNullOrWhiteSpace(right) ? 0 : g.MeasureString(right, monoFont).Width;
+        var captionWidth = Math.Max(180, Width - 90 - (int)rightWidth);
+        while (caption.Length > 4 && g.MeasureString(caption, titleFont).Width > captionWidth)
+            caption = caption[..^1];
+        if (caption.Length < (Caption?.Length ?? 0)) caption += "…";
+        g.DrawString(caption, titleFont, title, 20, 31);
 
-        // Keep the progress track on its own row. The old layout placed it at y=42,
-        // which caused long captions such as "EXTRACTING LINUX IMAGE" to overlap it.
-        var barY = 61;
-        var barX = 20;
-        var barWidth = Math.Max(120, Width - barX - (int)rightWidth - 58);
-        var bar = new Rectangle(barX, barY, barWidth, 9);
+        const int barY = 68;
+        const int barX = 20;
+        var barWidth = Math.Max(140, Width - barX - 58);
+        var bar = new Rectangle(barX, barY, barWidth, 10);
         using (var background = new SolidBrush(Theme.ProgressTrack)) g.FillRectangle(background, bar);
+
         var fillWidth = (int)Math.Round(bar.Width * (_value / 100d));
         if (fillWidth > 0)
         {
-            using var gradient = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(bar.X, bar.Y, fillWidth, bar.Height), Theme.Pink, Theme.Blue, 0f);
+            using var gradient = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(bar.X, bar.Y, Math.Max(1, fillWidth), bar.Height), Theme.Pink, Theme.Blue, 0f);
             g.FillRectangle(gradient, new Rectangle(bar.X, bar.Y, fillWidth, bar.Height));
         }
 
-        if (!string.IsNullOrWhiteSpace(right)) g.DrawString(right, monoFont, accent, Width - rightWidth - 20, 56);
-        g.DrawString($"{_value:0}%", monoFont, white, Width - 58, 80);
+        if (!string.IsNullOrWhiteSpace(right))
+            g.DrawString(right, monoFont, accent, Width - rightWidth - 20, 53);
 
-        var maxWidth = Math.Max(140, Width - 100);
-        var detail = Detail ?? "";
-        while (detail.Length > 4 && g.MeasureString(detail, detailFont).Width > maxWidth) detail = detail[..^1];
-        if (detail.Length < Detail.Length) detail += "…";
-        g.DrawString(detail, detailFont, muted, 20, 81);
+        var percent = $"{_value:0}%";
+        var percentWidth = g.MeasureString(percent, monoFont).Width;
+        g.DrawString(percent, monoFont, white, Width - percentWidth - 20, 91);
+
+        var detail = Detail ?? string.Empty;
+        var maxWidth = Math.Max(120, Width - percentWidth - 55);
+        while (detail.Length > 4 && g.MeasureString(detail, detailFont).Width > maxWidth)
+            detail = detail[..^1];
+        if (detail.Length < (Detail?.Length ?? 0)) detail += "…";
+        g.DrawString(detail, detailFont, muted, 20, 91);
     }
 }
