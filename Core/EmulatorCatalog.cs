@@ -9,13 +9,12 @@ namespace MewSwitchManager.Core;
 public static class EmulatorCatalog
 {
     private static readonly string[] RetroArchPreserve =
-    ["retroarch.cfg", "config", "saves", "states", "playlists", "thumbnails", "system"];
+    ["retroarch/retroarch.cfg", "retroarch/config", "retroarch/saves", "retroarch/states", "retroarch/playlists", "retroarch/thumbnails", "retroarch/system"];
 
     public static IReadOnlyList<EmulationPackageDefinition> Definitions { get; } =
     [
         new("tico", "tico frontend", "Multi-system launcher", EmulationSourceKind.GitHubRelease, "ticohq/tico", "tico.nro", "switch/tico/tico.nro", EmulationInstallMode.DirectFile, true, "Controller-first frontend; its external cores are installed below."),
         new("retroarch", "RetroArch + full core/asset bundle", "Multi-system / libretro", EmulationSourceKind.OfficialBundle, "", "RetroArch.7z", "", EmulationInstallMode.ArchiveToRoot, true, "Official Switch bundle containing RetroArch, all bundled cores and assets. User configuration, saves, states, playlists, thumbnails and BIOS/system files are preserved.", RetroArchPreserve),
-
         new("tico-fceumm", "tico FCEUmm", "NES / Famicom", EmulationSourceKind.GitHubRelease, "ticohq/tico-fceumm", "tico-fceumm.nro", "tico/cores/tico-fceumm.nro", EmulationInstallMode.DirectFile, true, "Tico NES/Famicom core."),
         new("tico-snes9x", "tico Snes9x", "SNES / Super Famicom", EmulationSourceKind.GitHubRelease, "ticohq/tico-snes9x", "tico-snes9x.nro", "tico/cores/tico-snes9x.nro", EmulationInstallMode.DirectFile, true, "Tico SNES core."),
         new("tico-mupen64", "tico Mupen64Plus-Next", "Nintendo 64", EmulationSourceKind.GitHubRelease, "ticohq/tico-mupen64plus", "tico-mupen64plus.nro", "tico/cores/tico-mupen64plus.nro", EmulationInstallMode.DirectFile, true, "Tico N64 core."),
