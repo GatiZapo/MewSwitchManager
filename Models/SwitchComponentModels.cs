@@ -16,7 +16,10 @@ public sealed record ComponentDefinition(
     string DetectionPath,
     string Description,
     string ArchiveHint,
-    bool PreserveExistingFiles = true);
+    bool PreserveExistingFiles = true)
+{
+    public override string ToString() => Name;
+}
 
 public sealed record ComponentStatus(
     ComponentDefinition Definition,
