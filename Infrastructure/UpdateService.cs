@@ -202,7 +202,7 @@ public sealed class UpdateService
             if (!artifactsDoc.RootElement.TryGetProperty("artifacts", out var artifacts) || artifacts.ValueKind != JsonValueKind.Array)
                 continue;
 
-            var preferred = $"MewSwitch-Manager-{GetPreferredArchitecture()}";
+            var preferred = $"MewNX-{GetPreferredArchitecture()}";
             foreach (var artifact in artifacts.EnumerateArray())
             {
                 var name = GetString(artifact, "name");
@@ -246,8 +246,9 @@ public sealed class UpdateService
                 extractPath = inner;
             }
 
-            var newExe = Directory.EnumerateFiles(extractPath, "MewSwitch Manager.exe", SearchOption.AllDirectories).FirstOrDefault();
-            if (newExe is null) throw new InvalidDataException("The update package does not contain MewSwitch Manager.exe.");
+            var newExe = Directory.EnumerateFiles(extractPath, "MewNX.exe", SearchOption.AllDirectories).FirstOrDefault()
+                         ?? Directory.EnumerateFiles(extractPath, "MewSwitch Manager.exe", SearchOption.AllDirectories).FirstOrDefault();
+            if (newExe is null) throw new InvalidDataException("The update package does not contain MewNX.exe.");
 
             var currentExe = Environment.ProcessPath ?? throw new InvalidOperationException("Current executable path is unavailable.");
             var currentDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
