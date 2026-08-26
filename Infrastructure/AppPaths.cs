@@ -6,15 +6,15 @@ public sealed record AppPaths(string DataDirectory, string CacheDirectory, strin
 {
     public static AppPaths Create(AppConfig config)
     {
-        // The image cache can be several gigabytes, so it belongs in LocalAppData
-        // rather than a roaming profile. Small state/log files stay in AppData.
+        // Large image caches stay in LocalAppData. State and diagnostics live in the
+        // MewNX roaming directory so the product name is consistent everywhere.
         var localRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var roamingRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-        var appDirectory = Path.Combine(roamingRoot, "MewSwitch");
-        var cacheDirectory = Resolve(localRoot, config.Storage.CacheDirectory, Path.Combine(localRoot, "MewSwitch", "Cache"));
+        var appDirectory = Path.Combine(roamingRoot, "MewNX");
+        var cacheDirectory = Resolve(localRoot, config.Storage.CacheDirectory, Path.Combine(localRoot, "MewNX", "Cache"));
         var stateFile = Resolve(roamingRoot, config.Storage.StateFile, Path.Combine(appDirectory, "state.json"));
-        var logFile = Path.Combine(appDirectory, "mewswitch.log");
+        var logFile = Path.Combine(appDirectory, "mewnx.log");
 
         return new AppPaths(appDirectory, cacheDirectory, stateFile, logFile);
     }
