@@ -4,7 +4,7 @@ using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Infrastructure;
 
-public sealed record GitHubAsset(string Name, string Url, long Size);
+public sealed record GitHubAsset(string Name, string Url, long Size, string? Digest);
 public sealed record GitHubRelease(string TagName, string Name, string HtmlUrl, bool Prerelease, IReadOnlyList<GitHubAsset> Assets);
 
 public sealed class GitHubReleaseClient
@@ -36,7 +36,8 @@ public sealed class GitHubReleaseClient
                 .Select(a => new GitHubAsset(
                     a.GetProperty("name").GetString() ?? "",
                     a.GetProperty("browser_download_url").GetString() ?? "",
-                    a.GetProperty("size").GetInt64()))
+                    a.GetProperty("size").GetInt64(),
+                    a.TryGetProperty("digest", out var d) ? d.GetString() : null))
                 .Where(a => !string.IsNullOrWhiteSpace(a.Url))
                 .ToArray()
             : [];
