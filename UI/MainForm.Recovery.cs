@@ -1,4 +1,5 @@
 using MewSwitchManager.Core;
+using MewSwitchManager.Infrastructure;
 
 namespace MewSwitchManager.UI;
 
@@ -83,7 +84,7 @@ public sealed partial class MainForm
 
     private void OpenRecoveryDataFolder()
     {
-        var paths = Infrastructure.AppPaths.Create(_config);
+        var paths = AppPaths.Create(_config);
         Directory.CreateDirectory(paths.DataDirectory);
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = paths.DataDirectory, UseShellExecute = true });
     }
