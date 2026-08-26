@@ -53,7 +53,7 @@ public sealed class InstallationEngine
         if (selected is null)
         {
             var fallback = Disks.FirstOrDefault(d => d.SafeCandidate);
-            _state.SelectedDiskNumber = fallback?.Number;
+            _state.SelectedDiskNumber = fallback?.Number ?? "";
             _state.SelectedDiskIdentity = fallback?.DisplayName ?? "";
             _state.SelectedDiskUniqueId = fallback?.UniqueId ?? "";
             _state.UpdatedAt = DateTimeOffset.UtcNow;
@@ -157,7 +157,7 @@ public sealed class InstallationEngine
     private void Persist()
     {
         _state.UpdatedAt = DateTimeOffset.UtcNow;
-        _store?.Save(_state);
+        _store.Save(_state);
         StateChanged?.Invoke();
     }
 
