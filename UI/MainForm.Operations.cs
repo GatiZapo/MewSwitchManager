@@ -19,7 +19,7 @@ public sealed partial class MainForm
         {
             _logger.Error("Refresh failed", ex);
             SetStatus("●  ERROR", Theme.Red);
-            MessageBox.Show(this, "No se pudo actualizar el estado del sistema.\n\n" + ex.Message, "MewSwitch Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "No se pudo actualizar el estado del sistema.\n\n" + ex.Message, "MewNX", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -49,9 +49,7 @@ public sealed partial class MainForm
         try
         {
             _diskSelector.Items.Clear();
-            foreach (var disk in safeDisks)
-                _diskSelector.Items.Add(disk);
-
+            foreach (var disk in safeDisks) _diskSelector.Items.Add(disk);
             var selected = safeDisks.FirstOrDefault(d => d.Number == selectedNumber);
             _diskSelector.SelectedItem = selected;
             _targetHint.Text = selected is null
@@ -136,10 +134,7 @@ public sealed partial class MainForm
             MessageBox.Show(this, ex.Message, "Preflight blocked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             UpdateUi();
         }
-        finally
-        {
-            UpdateActionButtons();
-        }
+        finally { UpdateActionButtons(); }
     }
 
     private async Task RunDownloadAsync()
@@ -147,7 +142,7 @@ public sealed partial class MainForm
         if (!Uri.TryCreate(_config.LinuxImage.Url, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            MessageBox.Show(this, "La URL de la imagen Linux no es válida. Revisa appsettings.json.", "MewSwitch Manager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, "La URL de la imagen Linux no es válida. Revisa appsettings.json.", "MewNX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -159,7 +154,6 @@ public sealed partial class MainForm
             _progress.Value = 0;
             var progress = new Progress<DownloadProgress>(RenderDownloadProgress);
             await _engine.DownloadAndVerifyLinuxAsync(progress, _operationCts.Token);
-
             _progress.Value = 100;
             _progress.Caption = "IMAGE VERIFIED";
             _progress.Detail = "The archive is complete and its SHA-1 matches the expected release hash.";
@@ -204,11 +198,8 @@ public sealed partial class MainForm
         }
 
         var confirmation = MessageBox.Show(this,
-            $"SE VA A BORRAR TODO EL CONTENIDO DEL USB.\n\nDisk {disk.Number}\n{disk.Model}\n{disk.SizeGb:0.0} GB\n\nMewSwitch volverá a comprobar la identidad del dispositivo antes de limpiar y antes de escribir.\n\n¿Continuar?",
-            "MewSwitch Manager — DESTRUCTIVE ACTION",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning,
-            MessageBoxDefaultButton.Button2);
+            $"SE VA A BORRAR TODO EL CONTENIDO DEL USB.\n\nDisk {disk.Number}\n{disk.Model}\n{disk.SizeGb:0.0} GB\n\nMewNX volverá a comprobar la identidad del dispositivo antes de limpiar y antes de escribir.\n\n¿Continuar?",
+            "MewNX — DESTRUCTIVE ACTION", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
         if (confirmation != DialogResult.Yes || !ConfirmDestructiveWrite(disk)) return;
 
         _operationCts = new CancellationTokenSource();
@@ -220,7 +211,6 @@ public sealed partial class MainForm
             _progress.Value = 0;
             _progress.RightText = "STARTING";
             _progress.Invalidate();
-
             var progress = new Progress<DownloadProgress>(RenderInstallProgress);
             await _engine.PrepareUsbAsync(progress, _operationCts.Token);
             RenderInstallComplete();
@@ -254,7 +244,6 @@ public sealed partial class MainForm
         var value = progress.TotalBytes is > 0
             ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
             : 0;
-
         _progress.Value = value;
         _progress.Caption = progress.Phase;
         _progress.Detail = progress.Detail ?? $"{FormatBytes(progress.BytesReceived)} / {FormatBytes(progress.TotalBytes ?? 0)}";
@@ -266,41 +255,25 @@ public sealed partial class MainForm
     {
         switch (progress.Phase)
         {
-            case "EXTRACTING LINUX IMAGE":
-                RenderExtractProgress(progress);
-                break;
+            case "EXTRACTING LINUX IMAGE": RenderExtractProgress(progress); break;
             case "FINALIZING LINUX IMAGE":
                 _progress.Caption = "FINALIZING LINUX IMAGE";
-                _progress.Value = 96;
-                _progress.Detail = progress.Detail ?? "Finalizing extracted files...";
+                _progress.Value = 99;
+                _progress.Detail = progress.Detail ?? "Finalizing files...";
                 _progress.RightText = "FINALIZE";
                 SetStatus("●  FINALIZING IMAGE", Theme.Blue);
                 break;
-            case "BUILDING LINUX IMAGE":
-                RenderBuildingProgress(progress);
-                break;
-            case "VERIFYING TARGET":
-                SetFixedStage("VERIFYING TARGET", 97, progress.Detail ?? "Re-checking USB identity before the destructive operation.", "CHECK", Theme.Blue);
-                break;
-            case "PARTITIONING USB":
-                SetFixedStage("PARTITIONING USB", 98, progress.Detail ?? "Creating the target partition. The USB is being modified now.", "WORKING", Theme.Pink);
-                break;
-            case "FLASHING USB":
-                RenderFlashingProgress(progress);
-                break;
-            case "USB FLASH COMPLETE":
-                RenderInstallComplete();
-                break;
+            case "BUILDING LINUX IMAGE": RenderBuildingProgress(progress); break;
+            case "VERIFYING TARGET": SetFixedStage("VERIFYING TARGET", 99, progress.Detail ?? "Re-checking USB identity before the destructive operation.", "CHECK", Theme.Blue); break;
+            case "FLASHING USB": RenderFlashingProgress(progress); break;
+            case "USB FLASH COMPLETE": RenderInstallComplete(); break;
             default:
                 _progress.Caption = progress.Phase;
-                _progress.Value = progress.TotalBytes is > 0
-                    ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
-                    : 0;
+                _progress.Value = progress.TotalBytes is > 0 ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 99) : 0;
                 _progress.Detail = progress.Detail ?? "Working...";
                 _progress.RightText = progress.TotalBytes is > 0 ? $"{_progress.Value:0}%" : "WORKING";
                 break;
         }
-
         _progress.Invalidate();
     }
 
@@ -309,11 +282,8 @@ public sealed partial class MainForm
         var rawPercent = progress.TotalBytes is > 0
             ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
             : 0;
-
-        // Extraction reaches 100 only after the final entry has been moved.
-        // Keep the visual bar below 100 until the explicit finalization event.
         _progress.Caption = "EXTRACTING LINUX IMAGE";
-        _progress.Value = Math.Min(95, rawPercent);
+        _progress.Value = Math.Min(99, rawPercent);
         _progress.Detail = progress.Detail ?? "Extracting Linux image...";
         _progress.RightText = $"{_progress.Value:0}%";
         SetStatus("●  EXTRACTING IMAGE", Theme.Blue);
@@ -325,18 +295,16 @@ public sealed partial class MainForm
             ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
             : 0;
         _progress.Caption = "BUILDING LINUX IMAGE";
-        _progress.Value = Math.Min(95, value);
-        _progress.Detail = progress.Detail ?? "Building raw image...";
-        _progress.RightText = $"{_progress.Value:0}%";
+        _progress.Value = Math.Min(99, value);
+        _progress.Detail = progress.Detail ?? "Locating/assembling the raw image...";
+        _progress.RightText = value > 0 ? $"{value:0}%" : "SCANNING";
         SetStatus("●  BUILDING IMAGE", Theme.Blue);
     }
 
     private void RenderFlashingProgress(DownloadProgress progress)
     {
         _progress.Caption = "FLASHING USB";
-        _progress.Value = progress.TotalBytes is > 0
-            ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100)
-            : 0;
+        _progress.Value = progress.TotalBytes is > 0 ? Math.Clamp(progress.BytesReceived * 100d / progress.TotalBytes.Value, 0, 100) : 0;
         _progress.Detail = progress.Detail ?? $"Writing Linux image • {FormatBytes(progress.BytesReceived)} / {FormatBytes(progress.TotalBytes ?? 0)}";
         _progress.RightText = $"{_progress.Value:0}%";
         SetStatus("●  FLASHING USB", Theme.Pink);
