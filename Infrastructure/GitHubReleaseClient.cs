@@ -75,7 +75,32 @@ public sealed class GitHubReleaseClient
             if (!append) existing = 0;
             await CopyToPartAsync(response, part, existing, progress, ct);
         }
-        File.Move(part, destination, true);
+
+        // Deliberately keep the .part file in place. The caller verifies the
+        // complete payload before promoting it, so a bad download never
+        // replaces a previously valid cached asset and interrupted downloads
+        // remain resumable.
+    }
+
+    public void PromotePart(string destination)
+    {
+        var part = destination + ".part";
+        if (!File.Exists(part)) throw new FileNotFoundException("Completed download part is missing.", part);
+
+        if (!File.Exists(destination))
+        {
+            File.Move(part, destination);
+            return;
+        }
+
+        try
+        {
+            File.Replace(part, destination, null, ignoreMetadataErrors: true);
+        }
+        catch (PlatformNotSupportedException)
+        {
+            File.Move(part, destination, overwrite: true);
+        }
     }
 
     private static async Task CopyToPartAsync(HttpResponseMessage response, string part, long existing, IProgress<DownloadProgress>? progress, CancellationToken ct)
