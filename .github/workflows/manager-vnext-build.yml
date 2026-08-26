@@ -1,0 +1,40 @@
+name: MewSwitch Manager — vNext validation
+
+on:
+  push:
+    branches: [feature/manager-vnext]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-arm64, win-x86]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore MewSwitchManager.csproj
+      - name: Build
+        run: dotnet build MewSwitchManager.csproj -c Release --no-restore -p:GitCommit=${{ github.sha }}
+      - name: Publish
+        run: dotnet publish MewSwitchManager.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --no-restore -o dist
+      - name: Validate publish
+        shell: pwsh
+        run: |
+          $exe = 'dist/MewSwitch Manager.exe'
+          if (-not (Test-Path $exe)) { throw 'Missing published executable.' }
+          if ((Get-Item $exe).Length -lt 1000000) { throw 'Published executable is unexpectedly small.' }
+          Write-Host "Validated ${{ matrix.rid }}"

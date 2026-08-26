@@ -45,8 +45,8 @@ public sealed partial class MainForm
     private bool TryGetAioTarget(out string root)
     {
         root = "";
-        var combo = Flatten(_content).OfType<ComboBox>().FirstOrDefault(c => c.Items.Cast<object>().Any(x => x is RemovableDrive));
-        if (combo?.SelectedItem is RemovableDrive drive) { root = drive.Root; return true; }
+        var target = _content.Controls.OfType<Control>().SelectMany(Flatten).OfType<ComboBox>().FirstOrDefault(c => c.Items.Cast<object>().Any(x => x is RemovableDrive));
+        if (target?.SelectedItem is RemovableDrive drive) { root = drive.Root; return true; }
         var first = new RemovableDriveService().Scan().FirstOrDefault();
         if (first is null) return false;
         root = first.Root; return true;

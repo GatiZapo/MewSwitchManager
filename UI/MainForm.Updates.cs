@@ -15,14 +15,14 @@ public sealed partial class MainForm
 
     private void InitializeUpdateCenter()
     {
-        _content.RowCount = Math.Max(_content.RowCount, 7);
-        _content.Controls.Add(BuildUpdateCenterSection(), 0, 6);
+        _content.RowCount = Math.Max(_content.RowCount, 8);
+        _content.Controls.Add(BuildUpdateCenterSection(), 0, 7);
 
         var nav = _sidebar.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
         if (nav is not null)
         {
-            nav.Height = 274;
-            var button = NavigationButton("05   UPDATE CENTER", false, 6);
+            nav.Height = 360;
+            var button = NavigationButton("06   UPDATE CENTER", false, 7);
             button.Width = 194;
             nav.Controls.Add(button);
         }

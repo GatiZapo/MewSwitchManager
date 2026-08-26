@@ -31,6 +31,7 @@ public sealed class InstallationEngine
     {
         _state = new JsonStore<AppState>(paths.StateFile).LoadOrCreate();
         _state.EnsureStages();
+        _state.ReconcilePersistedProgress();
         _store = new JsonStore<AppState>(paths.StateFile);
         _logger = logger;
         _config = config;
@@ -42,6 +43,7 @@ public sealed class InstallationEngine
         _safety = new SafetyEngine();
         _usb = new UsbStorageService(runner, logger, _safety);
         _dependencies = new DependencyService(runner, logger);
+        Persist();
     }
 
     public async Task RefreshAsync(CancellationToken ct = default)
@@ -86,7 +88,6 @@ public sealed class InstallationEngine
         await RefreshAsync(ct);
         var target = Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber);
         _safety.DemandSafeTarget(target);
-
         SetStage(InstallationStage.EnvironmentPreflight, StageState.Completed, "Safety checks passed.");
         _state.CurrentStage = InstallationStage.LinuxImage;
         Persist();
@@ -109,7 +110,6 @@ public sealed class InstallationEngine
         Persist();
     }
 
-
     public async Task PrepareUsbAsync(IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -119,10 +119,6 @@ public sealed class InstallationEngine
         _safety.DemandStableIdentity(selected!, current!);
         if (!_state.LinuxVerified)
             throw new InvalidOperationException("The Linux image must be verified before writing the USB target.");
-
-        // Never trust only the persisted flag. Re-check the cached archive right
-        // before the destructive workflow so a modified or replaced file cannot
-        // be flashed just because a previous session marked it as verified.
         if (!await _linux.VerifyExistingAsync(_cache, ct))
         {
             _state.LinuxDownloaded = false;
@@ -130,15 +126,12 @@ public sealed class InstallationEngine
             Persist();
             throw new InvalidDataException("The cached Linux image is missing, incomplete or failed verification. Download it again before writing the USB.");
         }
-
         SetStage(InstallationStage.UsbStoragePreparation, StageState.Running, "Preparing USB target and flashing Linux image.");
         _state.CurrentStage = InstallationStage.UsbStoragePreparation;
         Persist();
-
         var archive = _linux.FinalPath(_cache);
         var work = Path.Combine(_cache, "usb-work");
         await _usb.PrepareAndFlashAsync(current!, archive, work, progress, ct);
-
         SetStage(InstallationStage.UsbStoragePreparation, StageState.Completed, "Linux image flashed to USB successfully.");
         _state.CurrentStage = InstallationStage.HekateSd;
         Persist();
@@ -164,7 +157,7 @@ public sealed class InstallationEngine
     private void Persist()
     {
         _state.UpdatedAt = DateTimeOffset.UtcNow;
-        _store.Save(_state);
+        _store?.Save(_state);
         StateChanged?.Invoke();
     }
 
