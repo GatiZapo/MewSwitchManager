@@ -75,6 +75,12 @@ public sealed class InstallationEngine
     public bool IsSelectedDiskSafe() => _safety.IsSafeTarget(Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber));
     public string SelectedDiskSafetyText() => _safety.Explain(Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber));
 
+    public void SaveAutoPlan(AutoPlan plan)
+    {
+        _state.AutoPlan = plan;
+        Persist();
+    }
+
     public async Task PreflightAsync(CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
