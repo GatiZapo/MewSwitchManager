@@ -1,5 +1,6 @@
 using MewSwitchManager.Core;
 using MewSwitchManager.Hardware;
+using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
 namespace MewSwitchManager.UI;
@@ -196,7 +197,7 @@ public sealed partial class MainForm
 
     private void ShowRcmGuide()
     {
-        var probe = new RcmService(new Infrastructure.ProcessRunner(), _logger);
+        var probe = new RcmService(new ProcessRunner(), _logger);
         MessageBox.Show(this, probe.GetEntryGuide(), "RCM helper", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 }
