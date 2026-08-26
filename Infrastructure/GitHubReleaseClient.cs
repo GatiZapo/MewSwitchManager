@@ -18,9 +18,14 @@ public sealed class GitHubReleaseClient
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
 
-    public async Task<GitHubRelease> GetLatestAsync(string repository, CancellationToken ct = default)
+    public Task<GitHubRelease> GetLatestAsync(string repository, CancellationToken ct = default)
+        => GetAsync($"https://api.github.com/repos/{repository}/releases/latest", ct);
+
+    public Task<GitHubRelease> GetTagAsync(string repository, string tag, CancellationToken ct = default)
+        => GetAsync($"https://api.github.com/repos/{repository}/releases/tags/{Uri.EscapeDataString(tag)}", ct);
+
+    private async Task<GitHubRelease> GetAsync(string uri, CancellationToken ct)
     {
-        var uri = $"https://api.github.com/repos/{repository}/releases/latest";
         using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
@@ -35,7 +40,6 @@ public sealed class GitHubReleaseClient
                 .Where(a => !string.IsNullOrWhiteSpace(a.Url))
                 .ToArray()
             : [];
-
         return new GitHubRelease(
             root.GetProperty("tag_name").GetString() ?? "",
             root.GetProperty("name").GetString() ?? "",
@@ -70,7 +74,6 @@ public sealed class GitHubReleaseClient
             if (!append) existing = 0;
             await CopyToPartAsync(response, part, existing, progress, ct);
         }
-
         File.Move(part, destination, true);
     }
 
