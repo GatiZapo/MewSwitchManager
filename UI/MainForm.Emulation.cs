@@ -22,7 +22,7 @@ public sealed partial class MainForm
         {
             Dock = DockStyle.Top,
             Height = 55,
-            Text = "TICO + RETROARCH + ALL TICO CORES\nAutomatic download • SHA-256 verification • checkpoint • rollback • user saves/BIOS preserved",
+            Text = "TICO + RETROARCH + ALL TICO CORES\nAutomatic download • SHA-256 verification • checkpoint • transactional rollback • user data preserved",
             ForeColor = Theme.Muted,
             Font = Theme.Mono(7.2f)
         };
@@ -52,38 +52,39 @@ public sealed partial class MainForm
 
     private async Task InstallFullEmulationStackAsync()
     {
+        if (_operationCts is not null) return;
         var target = GetExperienceTarget();
         if (target is null) { MessageBox.Show(this, "Connect the Switch SD card first.", "Emulation Center", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+
         var packages = EmulatorCatalog.FullStack;
         var confirm = MessageBox.Show(this,
-            "MewNX will install the complete emulation stack:\n\n• tico frontend\n• RetroArch + its full official Switch core/asset bundle\n• All currently released Tico cores for the stock systems\n\n~4 GB free space is recommended.\n\nA checkpoint is created first. Existing RetroArch configuration, saves, states, playlists, thumbnails and BIOS/system files are preserved. ROMs and BIOS dumps are never downloaded by MewNX.\n\nContinue?",
+            "MewNX will install the complete emulation stack:\n\n• tico frontend\n• RetroArch + its full official Switch core/asset bundle\n• All currently released Tico cores for the stock systems\n\n~4 GB free space is recommended.\n\nA checkpoint is created first. Existing RetroArch configuration, saves, states, playlists, thumbnails and BIOS/system files are preserved. ROMs and BIOS dumps are never downloaded by MewNX.\n\nIf any required component fails, MewNX automatically rolls the whole emulation installation back instead of leaving a partial stack.\n\nContinue?",
             "INSTALL EVERYTHING — EMULATION", MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2);
         if (confirm != DialogResult.Yes) return;
 
         _experienceCheckpoint.Create(target, "Automatic checkpoint before full emulation stack");
-        if (_operationCts is not null) return;
         _operationCts = new CancellationTokenSource();
         try
         {
             _emulationAllButton.Enabled = false; _emulationOneButton.Enabled = false;
             SetStatus("●  INSTALLING FULL EMULATION STACK", Theme.Pink);
             var completed = await _emulationInstaller.InstallFullStackAsync(target, new Progress<DownloadProgress>(RenderDownloadProgress), _operationCts.Token);
-            var color = completed.Count == packages.Count ? Theme.Green : Theme.Amber;
-            SetStatus($"●  EMULATION {completed.Count}/{packages.Count}", color);
-            MessageBox.Show(this, $"Emulation installation finished.\n\nSuccessful: {completed.Count}/{packages.Count}.\n\nAny skipped component is recorded in the log and can be retried from the Emulation Center.", "Emulation Center", MessageBoxButtons.OK, completed.Count == packages.Count ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            SetStatus($"●  EMULATION {completed.Count}/{packages.Count} READY", Theme.Green);
+            MessageBox.Show(this, $"Complete emulation stack installed successfully.\n\nInstalled: {completed.Count}/{packages.Count} components.\n\nRetroArch, tico and all managed Tico cores are ready. Your existing user data was preserved.", "Emulation Center", MessageBoxButtons.OK, MessageBoxIcon.Information);
             await RefreshExperienceAsync();
         }
         catch (OperationCanceledException) { SetStatus("●  EMULATION INSTALL CANCELLED", Theme.Amber); }
-        catch (Exception ex) { _logger.Error("Full emulation installation failed", ex); SetStatus("●  EMULATION INSTALL FAILED", Theme.Red); MessageBox.Show(this, ex.Message, "Emulation Center", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (Exception ex) { _logger.Error("Full emulation installation failed", ex); SetStatus("●  EMULATION INSTALL FAILED — ROLLED BACK", Theme.Red); MessageBox.Show(this, $"The complete emulation stack could not be installed.\n\nMewNX rolled back the managed emulation changes.\n\n{ex.Message}", "Emulation Center", MessageBoxButtons.OK, MessageBoxIcon.Error); await RefreshExperienceAsync(); }
         finally { _emulationAllButton.Enabled = true; _emulationOneButton.Enabled = true; _operationCts.Dispose(); _operationCts = null; }
     }
 
     private async Task InstallSelectedEmulationAsync(EmulationPackageDefinition definition)
     {
+        if (_operationCts is not null) return;
         var target = GetExperienceTarget();
         if (target is null) { MessageBox.Show(this, "Connect the Switch SD card first.", "Emulation Center", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+
         _experienceCheckpoint.Create(target, $"Automatic checkpoint before {definition.Name}");
-        if (_operationCts is not null) return;
         _operationCts = new CancellationTokenSource();
         try
         {
@@ -95,7 +96,7 @@ public sealed partial class MainForm
             await RefreshExperienceAsync();
         }
         catch (OperationCanceledException) { SetStatus("●  EMULATION INSTALL CANCELLED", Theme.Amber); }
-        catch (Exception ex) { _logger.Error($"Emulation component {definition.Name} failed", ex); SetStatus("●  EMULATION COMPONENT FAILED", Theme.Red); MessageBox.Show(this, ex.Message, "Emulation Center", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (Exception ex) { _logger.Error($"Emulation component {definition.Name} failed", ex); SetStatus("●  EMULATION COMPONENT FAILED — ROLLED BACK", Theme.Red); MessageBox.Show(this, $"{definition.Name} could not be installed.\n\nMewNX rolled back the component change.\n\n{ex.Message}", "Emulation Center", MessageBoxButtons.OK, MessageBoxIcon.Error); await RefreshExperienceAsync(); }
         finally { _emulationAllButton.Enabled = true; _emulationOneButton.Enabled = true; _operationCts.Dispose(); _operationCts = null; }
     }
 
