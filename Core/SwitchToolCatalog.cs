@@ -12,6 +12,8 @@ public static class SwitchToolCatalog
         new("jksv", "JKSV", "J-D-K/JKSV", SwitchToolKind.Homebrew, "switch/JKSV/JKSV.nro", "*.nro", "Save-data management utility."),
         new("checkpoint", "Checkpoint", "FlagBrew/Checkpoint", SwitchToolKind.Homebrew, "switch/Checkpoint/Checkpoint.nro", "*.nro", "Save-data and extra-data management utility."),
         new("goldleaf", "Goldleaf", "XorTroll/Goldleaf", SwitchToolKind.Homebrew, "switch/Goldleaf.nro", "*.nro", "General Switch file/title utility."),
+        new("dbi", "DBI", "rashevskyv/dbi", SwitchToolKind.Homebrew, "switch/DBI/DBI.nro", "*.nro", "Title/file/save manager with MTP and USB installation workflows. The upstream release channel may vary by language; MewNX reports the resolved release before deployment."),
+        new("awoo-installer", "Awoo Installer", "Huntereb/Awoo-Installer", SwitchToolKind.Homebrew, "switch/Awoo-Installer/Awoo-Installer.nro", "*.zip", "NSP/NSZ/XCI/XCZ installer with USB/LAN workflows. MewNX uses it only as an installer adapter for user-provided content."),
         new("nx-shell", "NX-Shell", "joel16/NX-Shell", SwitchToolKind.Homebrew, "switch/NX-Shell/NX-Shell.nro", "*.nro", "Lightweight SD file manager."),
         new("daybreak", "Daybreak", "Atmosphere-NX/Atmosphere", SwitchToolKind.Homebrew, "switch/daybreak.nro", "*.nro", "Firmware update utility distributed with Atmosphere; shown only when the matching file is available."),
         new("tesla-loader", "nx-ovlloader", "WerWolv/nx-ovlloader", SwitchToolKind.Overlay, "atmosphere/contents/420000000007E51A/exefs.nsp", "*.zip", "Tesla overlay loader."),
