@@ -3,11 +3,10 @@ namespace MewSwitchManager.UI;
 public sealed partial class MainForm
 {
     /// <summary>
-    /// Stabilises the dashboard layout after all optional sections (including
-    /// Update Center) have been added.  WinForms TableLayoutPanel can collapse
-    /// Dock=Fill children when the parent is AutoSize=true and has no explicit
-    /// row styles; this is what caused the header/section geometry to look
-    /// broken on larger displays.
+    /// Stabilises the dashboard geometry after all sections have been added.
+    /// The previous fixed row heights were smaller than the actual custom
+    /// controls, which clipped the progress panel and made the dashboard look
+    /// vertically broken.
     /// </summary>
     private void ApplyVisualPolish()
     {
@@ -21,12 +20,12 @@ public sealed partial class MainForm
         var heights = new[]
         {
             86,   // Header
-            166,  // Target USB
-            198,  // Health / progress
+            190,  // Target USB
+            244,  // Health / progress
             214,  // Installation stages
-            184,  // Operation log
-            40,   // Footer
-            270   // Update Center
+            190,  // Operation log
+            42,   // Footer
+            285   // Update Center
         };
 
         foreach (var height in heights)
@@ -38,12 +37,8 @@ public sealed partial class MainForm
         _content.BackColor = Theme.Background;
 
         foreach (Control child in _content.Controls)
-        {
             child.Dock = DockStyle.Fill;
-        }
 
-        // Keep the content exactly inside the available viewport. This avoids
-        // the subtle horizontal clipping caused by AutoScroll + AutoSize.
         _scrollHost.HorizontalScroll.Enabled = false;
         _scrollHost.HorizontalScroll.Visible = false;
         _scrollHost.Resize -= ScrollHost_VisualPolishResize;
@@ -56,16 +51,10 @@ public sealed partial class MainForm
 
     private void FitPolishedContentWidth()
     {
-        if (_scrollHost.ClientSize.Width <= 0)
-            return;
+        if (_scrollHost.ClientSize.Width <= 0) return;
 
-        var width = _scrollHost.ClientSize.Width
-            - _scrollHost.Padding.Horizontal
-            - 2;
-
-        if (_scrollHost.VerticalScroll.Visible)
-            width -= SystemInformation.VerticalScrollBarWidth;
-
+        var width = _scrollHost.ClientSize.Width - _scrollHost.Padding.Horizontal - 2;
+        if (_scrollHost.VerticalScroll.Visible) width -= SystemInformation.VerticalScrollBarWidth;
         _content.Width = Math.Max(640, width);
     }
 }
