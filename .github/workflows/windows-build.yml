@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mewnx-windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PROJECT: MewSwitchManager.csproj
   VERSION: 0.4.0-alpha.1
