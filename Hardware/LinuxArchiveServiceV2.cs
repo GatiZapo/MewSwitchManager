@@ -8,7 +8,7 @@ namespace MewSwitchManager.Hardware;
 
 /// <summary>
 /// Extracts the Linux distribution archive and resolves the raw image used by the USB writer.
-/// Uses the SharpCompress 0.50.x-compatible IArchiveEntry.WriteTo(Stream) API.
+/// All filesystem-heavy post-extraction discovery is kept off the WinForms UI thread.
 /// </summary>
 public sealed class LinuxArchiveServiceV2(AppLogger logger)
 {
@@ -22,8 +22,15 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
         RecreateDirectory(extractDirectory);
         try
         {
+            // Archive extraction is CPU/IO heavy and must never run on the WinForms UI thread.
             await Task.Run(() => ExtractArchive(archivePath, extractDirectory, progress, ct), ct);
-            return await ResolveRawImageAsync(extractDirectory, progress, ct);
+
+            // IMPORTANT: Directory.EnumerateFiles can take a long time on a large extracted
+            // Linux tree (and can be slowed further by Windows Defender). Running it directly
+            // after the first await would execute synchronously on the UI context and make
+            // the progress bar appear frozen at its last extraction percentage (historically 95%).
+            progress?.Report(new DownloadProgress(0, 1, 0, null, "BUILDING LINUX IMAGE", "Scanning extracted files for the Linux image..."));
+            return await Task.Run(() => ResolveRawImageAsync(extractDirectory, progress, ct), ct);
         }
         catch
         {
@@ -71,9 +78,6 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
                     Report(progress, totalBytes > 0 ? Math.Min(current, totalBytes) : completedEntries, totalBytes > 0 ? totalBytes : totalEntries, "EXTRACTING LINUX IMAGE", $"Extracting {Path.GetFileName(key)}");
                 });
 
-                // SharpCompress 0.50.x exposes WriteTo(Stream) for IArchiveEntry.
-                // ExtractionOptions is intentionally not passed here because that overload
-                // was removed from the stream-based extension API.
                 entry.WriteTo(output);
                 output.Flush();
                 MoveWithRetry(temporaryPath, outputPath, ct);
@@ -99,13 +103,15 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
         throw new IOException($"Could not finalize extracted file '{destination}'. Another process may be holding it open.");
     }
 
-    private async Task<string> ResolveRawImageAsync(string root, IProgress<DownloadProgress>? progress, CancellationToken ct)
+    private string ResolveRawImageAsync(string root, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         Report(progress, 0, 1, "BUILDING LINUX IMAGE", "Locating Linux raw image...");
         var raw = Directory.EnumerateFiles(root, "ubuntu.raw", SearchOption.AllDirectories).FirstOrDefault();
         if (raw is not null)
         {
             Report(progress, 1, 1, "BUILDING LINUX IMAGE", "ubuntu.raw found.");
+            logger.Info($"Resolved Linux raw image: {raw}");
             return raw;
         }
 
@@ -115,7 +121,7 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
             .ToArray();
         if (parts.Length == 0) throw new InvalidDataException("The Linux archive does not contain ubuntu.raw or l4t split image files.");
         var output = Path.Combine(root, "ubuntu.raw");
-        await MergePartsAsync(parts, output, progress, ct);
+        MergePartsAsync(parts, output, progress, ct).GetAwaiter().GetResult();
         return output;
     }
 
