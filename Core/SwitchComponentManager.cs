@@ -51,7 +51,6 @@ public sealed class SwitchComponentManager
                 result.Add(new ComponentStatus(definition, installed, installedVersion, "Managed by Linux workflow", null, false, definition.Description));
                 continue;
             }
-
             try
             {
                 var release = await GetReleaseAsync(definition, ct);
@@ -63,7 +62,6 @@ public sealed class SwitchComponentManager
                 result.Add(new ComponentStatus(definition, installed, installedVersion, "Unavailable", null, false, "Release check failed; existing files were not touched."));
             }
         }
-
         _state.LastTargetRoot = targetRoot;
         _state.UpdatedAt = DateTimeOffset.UtcNow;
         new JsonStore<ComponentManagerState>(_stateFile).Save(_state);
@@ -85,7 +83,7 @@ public sealed class SwitchComponentManager
         Directory.CreateDirectory(componentCache);
         var downloadPath = Path.Combine(componentCache, SanitizeFileName(asset.Name));
         await _releases.DownloadResumableAsync(asset.Url, downloadPath, progress, ct);
-        VerifyDownloadedFile(downloadPath);
+        await VerifyDownloadedFileAsync(downloadPath, asset.Digest, ct);
 
         if (component == SwitchComponent.Dbi)
         {
@@ -129,7 +127,6 @@ public sealed class SwitchComponentManager
         var assets = release.Assets.Where(a => a.Size > 0).ToList();
         if (definition.Id == SwitchComponent.Dbi)
             return assets.FirstOrDefault(a => string.Equals(a.Name, "DBI.nro", StringComparison.OrdinalIgnoreCase));
-
         return assets.FirstOrDefault(a => a.Name.EndsWith(definition.ArchiveHint, StringComparison.OrdinalIgnoreCase)
                                           && !a.Name.Contains("source", StringComparison.OrdinalIgnoreCase)
                                           && !a.Name.Contains("src", StringComparison.OrdinalIgnoreCase));
@@ -149,15 +146,19 @@ public sealed class SwitchComponentManager
     }
 
     private static List<int> ExtractNumbers(string value) =>
-        System.Text.RegularExpressions.Regex.Matches(value, @"\d+")
-            .Select(m => int.TryParse(m.Value, out var n) ? n : 0).ToList();
+        System.Text.RegularExpressions.Regex.Matches(value, @"\d+").Select(m => int.TryParse(m.Value, out var n) ? n : 0).ToList();
 
-    private static void VerifyDownloadedFile(string path)
+    private static async Task VerifyDownloadedFileAsync(string path, string? digest, CancellationToken ct)
     {
         if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new InvalidDataException("Downloaded component is empty or missing.");
-        using var stream = File.OpenRead(path);
+        if (string.IsNullOrWhiteSpace(digest)) return;
+        if (!digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"Unsupported release digest format: {digest}");
+        var expected = digest[7..].Trim().ToUpperInvariant();
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var sha = SHA256.Create();
-        _ = sha.ComputeHash(stream);
+        var actual = Convert.ToHexString(await sha.ComputeHashAsync(stream, ct));
+        if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(actual), System.Text.Encoding.ASCII.GetBytes(expected)))
+            throw new InvalidDataException($"Component SHA-256 verification failed. Expected {expected}, got {actual}.");
     }
 
     private static void ExtractSafe(string archivePath, string destination)
