@@ -15,7 +15,7 @@ public sealed class AutoModePlanner
 
         plan.TargetDiskNumber = state.SelectedDiskNumber;
         plan.TargetDiskUniqueId = state.SelectedDiskUniqueId;
-        plan.CurrentStepId = plan.Steps.FirstOrDefault(x => x.State is AutoStepState.Pending or AutoStepState.Running or AutoStepState.WaitingForUser)?.Id ?? "";
+        plan.CurrentStepId = plan.Steps.FirstOrDefault(x => x.State != AutoStepState.Completed)?.Id ?? "";
         plan.UpdatedAt = DateTimeOffset.UtcNow;
         return plan;
     }
