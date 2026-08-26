@@ -57,6 +57,7 @@ public sealed partial class MainForm : Form
         DoubleBuffered = true;
 
         BuildUi();
+        InitializeManagerCenter(paths);
         InitializeUpdateCenter();
         ApplyVisualPolish();
         EnableDarkTitleBar();
@@ -68,10 +69,10 @@ public sealed partial class MainForm : Form
         {
             ApplyVisualPolish();
             await RefreshAsync();
+            RefreshSwitchStorageTargets();
             await CheckForUpdatesOnStartupAsync();
         };
         FormClosing += (_, _) => _operationCts?.Cancel();
         KeyDown += MainForm_KeyDown;
     }
-
 }
