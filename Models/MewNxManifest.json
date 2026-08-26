@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "product": "MewNX",
+  "components": [
+    { "id": "hekate", "name": "Hekate / Nyx", "channel": "stable", "dependencies": [] },
+    { "id": "atmosphere", "name": "Atmosphere", "channel": "stable", "dependencies": ["hekate"] },
+    { "id": "dbi", "name": "DBI", "channel": "stable", "dependencies": ["atmosphere"] },
+    { "id": "nx-ovlloader", "name": "nx-ovlloader", "channel": "stable", "dependencies": ["atmosphere"] },
+    { "id": "tesla-menu", "name": "Tesla Menu", "channel": "stable", "dependencies": ["nx-ovlloader"] },
+    { "id": "status-monitor", "name": "Status Monitor Overlay", "channel": "stable", "dependencies": ["nx-ovlloader"] },
+    { "id": "sys-clk", "name": "sys-clk", "channel": "stable", "dependencies": ["nx-ovlloader"] },
+    { "id": "fpslocker", "name": "FPSLocker", "channel": "stable", "dependencies": ["nx-ovlloader"] },
+    { "id": "ultrahand", "name": "Ultrahand Overlay", "channel": "stable", "dependencies": ["nx-ovlloader"] },
+    { "id": "checkpoint", "name": "Checkpoint", "channel": "stable", "dependencies": ["atmosphere"] },
+    { "id": "jksv", "name": "JKSV", "channel": "stable", "dependencies": ["atmosphere"] }
+  ]
+}
