@@ -45,7 +45,7 @@ public sealed partial class MainForm
         _aioPackSelector.SelectedIndex = 0; _aioPackSelector.SelectedIndexChanged += (_, _) => ApplySelectedPack();
         StyleButton(_aioScanButton, "SCAN SWITCH", Theme.Blue, 125);
         StyleButton(_aioToolsButton, "INSTALL / UPDATE SELECTED", Theme.Pink, 190);
-        StyleButton(_aioAllButton, "UPDATE ALL SAFE", Theme.Purple, 145);
+        StyleButton(_aioAllButton, "UPDATE ALL SAFE", Theme.Blue, 145);
         _aioScanButton.Click += async (_, _) => await ScanAioAsync();
         _aioToolsButton.Click += async (_, _) => await AioInstallSelectedAsync();
         _aioAllButton.Click += async (_, _) => await AioInstallAllAsync();
