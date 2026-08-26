@@ -63,7 +63,13 @@ public sealed class EmulationInstaller
         var (version, url, digest, assetName) = await ResolveSourceAsync(definition, ct);
         var downloadPath = Path.Combine(cache, Sanitize(assetName));
         await _releases.DownloadResumableAsync(url, downloadPath, progress, ct);
-        await VerifyDownloadedFileAsync(downloadPath, digest, ct);
+
+        // Keep the completed payload in .part until its digest/content has been
+        // verified. This preserves resumability and prevents a bad download
+        // from replacing a previously valid cached component.
+        var partPath = downloadPath + ".part";
+        await VerifyDownloadedFileAsync(partPath, digest, ct);
+        _releases.PromotePart(downloadPath);
 
         var backup = BackupDestination(targetRoot, definition);
         try
