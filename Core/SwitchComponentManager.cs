@@ -83,7 +83,9 @@ public sealed class SwitchComponentManager
         Directory.CreateDirectory(componentCache);
         var downloadPath = Path.Combine(componentCache, SanitizeFileName(asset.Name));
         await _releases.DownloadResumableAsync(asset.Url, downloadPath, progress, ct);
-        await VerifyDownloadedFileAsync(downloadPath, asset.Digest, ct);
+        var partPath = downloadPath + ".part";
+        await VerifyDownloadedFileAsync(partPath, asset.Digest, ct);
+        _releases.PromotePart(downloadPath);
 
         var backupRoot = BackupBeforeUpdate(targetRoot, definition, release.TagName);
         try
@@ -174,7 +176,9 @@ public sealed class SwitchComponentManager
         using var archive = ArchiveFactory.OpenArchive(archivePath);
         foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
         {
-            var relative = entry.Key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var key = entry.Key;
+            if (string.IsNullOrWhiteSpace(key)) throw new InvalidDataException("Archive contains an entry without a path.");
+            var relative = key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
             var full = Path.GetFullPath(Path.Combine(destination, relative));
             if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Archive contains an unsafe path.");
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
