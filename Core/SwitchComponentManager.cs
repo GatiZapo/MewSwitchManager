@@ -171,7 +171,7 @@ public sealed class SwitchComponentManager
     private static void ExtractSafe(string archivePath, string destination)
     {
         var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
-        using var archive = ArchiveFactory.Open(archivePath);
+        using var archive = ArchiveFactory.OpenArchive(archivePath);
         foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
         {
             var relative = entry.Key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
