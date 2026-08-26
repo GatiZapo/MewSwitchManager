@@ -83,6 +83,7 @@ public sealed partial class MainForm
         if (MessageBox.Show(this, $"MewSwitch recommends:\n\n{names}\n\nA checkpoint will be created first. Continue?", "Prepare recommended setup", MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         _experienceCheckpoint.Create(target, "Automatic checkpoint before recommended setup");
         await InstallToolsWithCheckpointAsync(target, recommendations.Select(x => x.ToolId).ToArray(), "PREPARING RECOMMENDED SETUP");
+        await RefreshExperienceAsync();
     }
 
     private async Task UpdateEverythingAsync()
@@ -93,13 +94,52 @@ public sealed partial class MainForm
         try { result = await Task.Run(() => _experienceService.Inspect(target)); }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Update everything", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
 
-        var candidates = result.Tools.Where(x => x.Installed).Select(x => x.Definition.Id).ToArray();
-        var componentUpdates = new[] { SwitchComponent.Hekate, SwitchComponent.Atmosphere, SwitchComponent.Dbi };
-        var updateList = string.Join(Environment.NewLine, candidates.Select(x => "• " + x));
-        if (MessageBox.Show(this, $"MewSwitch will checkpoint the SD before updating installed AIO tools.\n\nTools detected:\n{updateList}\n\nHekate / Atmosphère / DBI can be updated separately from SWITCH MANAGER. Continue?", "Update everything", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        var installedTools = result.Tools.Where(x => x.Installed).Select(x => x.Definition.Id).ToArray();
+        var core = new[] { SwitchComponent.Hekate, SwitchComponent.Atmosphere, SwitchComponent.Dbi };
+        var coreNames = string.Join(", ", core.Select(x => x.ToString()));
+        var toolNames = installedTools.Length == 0 ? "none" : string.Join(", ", installedTools);
+        if (MessageBox.Show(this, $"MewSwitch will create a checkpoint before updating the Switch installation.\n\nCore components: {coreNames}\nInstalled AIO tools: {toolNames}\n\nLinux and NAND/partition operations are intentionally excluded from this one-click action. Continue?", "Update everything", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+
         _experienceCheckpoint.Create(target, "Automatic checkpoint before Update Everything");
-        await InstallToolsWithCheckpointAsync(target, candidates, "UPDATING AIO TOOLS");
-        await RefreshExperienceAsync();
+        if (_operationCts is not null) return;
+        _operationCts = new CancellationTokenSource();
+        try
+        {
+            SetStatus("●  UPDATING EVERYTHING", Theme.Pink);
+            var total = core.Length + installedTools.Length;
+            var completed = 0;
+            var progress = new Progress<DownloadProgress>(p => RenderDownloadProgress(p));
+            foreach (var component in core)
+            {
+                _operationCts.Token.ThrowIfCancellationRequested();
+                try
+                {
+                    await _componentManager.InstallOrUpdateAsync(component, target, progress, _operationCts.Token);
+                    completed++;
+                }
+                catch (Exception ex) { _logger.Warn($"Core component {component} was skipped: {ex.Message}"); }
+            }
+            foreach (var id in installedTools.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _operationCts.Token.ThrowIfCancellationRequested();
+                var definition = SwitchToolCatalog.Definitions.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+                if (definition is null) continue;
+                try
+                {
+                    await _toolInstaller.InstallOrUpdateAsync(definition, target, progress, _operationCts.Token);
+                    completed++;
+                }
+                catch (Exception ex) { _logger.Warn($"Tool {definition.Name} was skipped: {ex.Message}"); }
+            }
+            SetStatus($"●  UPDATE EVERYTHING {completed}/{total}", completed == total ? Theme.Green : Theme.Amber);
+        }
+        catch (OperationCanceledException) { SetStatus("●  UPDATE EVERYTHING CANCELLED", Theme.Amber); }
+        finally
+        {
+            _operationCts.Dispose();
+            _operationCts = null;
+            await RefreshExperienceAsync();
+        }
     }
 
     private async Task InstallToolsWithCheckpointAsync(string target, IReadOnlyList<string> toolIds, string statusText)
