@@ -23,9 +23,10 @@ public sealed partial class MainForm
     private void InitializeAioTools(AppPaths paths)
     {
         _toolInstaller = new SwitchToolInstaller(paths, _logger);
-        _content.RowCount = Math.Max(_content.RowCount, 10);
+        _content.RowCount = Math.Max(_content.RowCount, 11);
         _content.Controls.Add(BuildAioToolsSection(), 0, 7);
         _content.Controls.Add(BuildEmulationSection(), 0, 8);
+        _content.Controls.Add(BuildGameCenterSection(), 0, 9);
     }
 
     private Control BuildAioToolsSection()
@@ -105,7 +106,7 @@ internal sealed class ToolPickerDialog : Form
     public SwitchToolDefinition? Selected => _list.SelectedItem as SwitchToolDefinition;
     public ToolPickerDialog(IEnumerable<SwitchToolDefinition> definitions)
     {
-        Text = "MewSwitch — Select Tool"; Width = 520; Height = 420; StartPosition = FormStartPosition.CenterParent; BackColor = Theme.Surface; ForeColor = Theme.Text;
+        Text = "MewNX — Select Tool"; Width = 520; Height = 420; StartPosition = FormStartPosition.CenterParent; BackColor = Theme.Surface; ForeColor = Theme.Text;
         foreach (var definition in definitions) _list.Items.Add(definition);
         _list.BackColor = Theme.Surface2; _list.ForeColor = Theme.Text; _list.Font = Theme.UI(9); _list.SelectedIndex = 0;
         var ok = new Button { Text = "INSTALL / UPDATE", Dock = DockStyle.Bottom, Height = 42, DialogResult = DialogResult.OK };
