@@ -69,14 +69,16 @@ public sealed partial class MainForm
     private void ApplyResponsiveLayout()
     {
         if (WindowState == FormWindowState.Minimized) return;
-        var compact = ClientSize.Width < 1080;
-        _sidebar.Visible = !compact;
-        _compactNav.Visible = compact;
+        // MewNX now uses a persistent AIO sidebar. Hiding it at arbitrary desktop widths
+        // made the navigation disappear and the old compact strip overlap the operation bar.
+        // The minimum form width is deliberately sized to keep the sidebar usable.
+        _sidebar.Visible = true;
+        _compactNav.Visible = false;
         if (ParentLayout(out var root))
         {
-            root.ColumnStyles[0].Width = compact ? 0 : 216;
+            root.ColumnStyles[0].Width = 216;
             root.ColumnStyles[1].Width = 100;
-            root.RowStyles[0].Height = compact ? 52 : 0;
+            if (root.RowStyles.Count > 0) root.RowStyles[0].Height = 112;
         }
         FitContentWidth();
     }
@@ -90,7 +92,7 @@ public sealed partial class MainForm
     private void FitContentWidth()
     {
         if (_scrollHost.ClientSize.Width <= 0) return;
-        _content.Width = Math.Max(560, _scrollHost.ClientSize.Width - _scrollHost.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth - 4);
+        _content.Width = Math.Max(560, _scrollHost.ClientSize.Width - _scrollHost.Padding.Horizontal - 4);
     }
 
     private void MainForm_KeyDown(object? sender, KeyEventArgs e)
