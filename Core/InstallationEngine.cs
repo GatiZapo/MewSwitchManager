@@ -24,7 +24,6 @@ public sealed class InstallationEngine
     public bool WslReady { get; private set; }
     public bool RcmConnected { get; private set; }
     public bool HekateDetected { get; private set; }
-
     public event Action? StateChanged;
 
     public InstallationEngine(AppPaths paths, AppConfig config, AppLogger logger)
@@ -66,11 +65,7 @@ public sealed class InstallationEngine
 
     public void SelectDisk(DiskInfo? disk)
     {
-        if (disk is null || !_safety.IsSafeTarget(disk))
-        {
-            _logger.Warn("Blocked attempt to select an unsafe disk.");
-            return;
-        }
+        if (disk is null || !_safety.IsSafeTarget(disk)) { _logger.Warn("Blocked attempt to select an unsafe disk."); return; }
         _state.SelectedDiskNumber = disk.Number;
         _state.SelectedDiskIdentity = disk.DisplayName;
         _state.SelectedDiskUniqueId = disk.UniqueId;
@@ -100,14 +95,30 @@ public sealed class InstallationEngine
         _state.LinuxVerified = false;
         SetStage(InstallationStage.LinuxImage, StageState.Running, "Downloading Linux image.");
         Persist();
-        await _linux.DownloadAsync(_cache, progress, ct);
-        var ok = await _linux.VerifySha1Async(_linux.FinalPath(_cache), ct);
-        if (!ok) throw new InvalidDataException("Linux image SHA-1 verification failed.");
-        _state.LinuxDownloaded = true;
-        _state.LinuxVerified = true;
-        SetStage(InstallationStage.LinuxImage, StageState.Completed, "Image verified successfully.");
-        _state.CurrentStage = InstallationStage.UsbStoragePreparation;
-        Persist();
+        try
+        {
+            await _linux.DownloadAsync(_cache, progress, ct);
+            var ok = await _linux.VerifySha1Async(_linux.FinalPath(_cache), ct);
+            if (!ok) throw new InvalidDataException("Linux image SHA-1 verification failed.");
+            _state.LinuxDownloaded = true;
+            _state.LinuxVerified = true;
+            SetStage(InstallationStage.LinuxImage, StageState.Completed, "Image verified successfully.");
+            _state.CurrentStage = InstallationStage.UsbStoragePreparation;
+            Persist();
+        }
+        catch (OperationCanceledException)
+        {
+            SetStage(InstallationStage.LinuxImage, StageState.WaitingForUser, "Download cancelled. Existing partial data was preserved for resumption.");
+            Persist();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            SetStage(InstallationStage.LinuxImage, StageState.Failed, ex.Message);
+            Persist();
+            _logger.Error("Linux image download/verification failed", ex);
+            throw;
+        }
     }
 
     public async Task PrepareUsbAsync(IProgress<DownloadProgress>? progress, CancellationToken ct = default)
@@ -117,8 +128,7 @@ public sealed class InstallationEngine
         _safety.DemandSafeTarget(selected);
         var current = await _disks.GetDiskAsync(_state.SelectedDiskNumber, ct);
         _safety.DemandStableIdentity(selected!, current!);
-        if (!_state.LinuxVerified)
-            throw new InvalidOperationException("The Linux image must be verified before writing the USB target.");
+        if (!_state.LinuxVerified) throw new InvalidOperationException("The Linux image must be verified before writing the USB target.");
         if (!await _linux.VerifyExistingAsync(_cache, ct))
         {
             _state.LinuxDownloaded = false;
