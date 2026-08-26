@@ -2,7 +2,7 @@ namespace MewSwitchManager.Models;
 
 public sealed class AppState
 {
-    public int SchemaVersion { get; set; } = 4;
+    public int SchemaVersion { get; set; } = 5;
     public InstallationStage CurrentStage { get; set; } = InstallationStage.EnvironmentPreflight;
     public bool LinuxDownloaded { get; set; }
     public bool LinuxVerified { get; set; }
@@ -10,6 +10,7 @@ public sealed class AppState
     public string SelectedDiskIdentity { get; set; } = "";
     public string SelectedDiskUniqueId { get; set; } = "";
     public List<StageRecord> Stages { get; set; } = [];
+    public AutoPlan? AutoPlan { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public void EnsureStages()
@@ -35,6 +36,16 @@ public sealed class AppState
             image.State = StageState.Warning;
             image.Message = "A previous session downloaded the image, but it is not currently marked verified.";
             if (CurrentStage == InstallationStage.EnvironmentPreflight) CurrentStage = InstallationStage.LinuxImage;
+        }
+
+        if (AutoPlan is not null)
+        {
+            AutoPlan.Steps ??= [];
+            AutoPlan.TargetDiskNumber ??= "";
+            AutoPlan.TargetDiskUniqueId ??= "";
+            AutoPlan.CurrentStepId ??= "";
+            if (string.IsNullOrWhiteSpace(AutoPlan.CurrentStepId))
+                AutoPlan.CurrentStepId = AutoPlan.Steps.FirstOrDefault(x => x.State is AutoStepState.Pending or AutoStepState.Running or AutoStepState.WaitingForUser)?.Id ?? "";
         }
     }
 }
