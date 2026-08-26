@@ -38,7 +38,7 @@ jobs:
             rid: win-x86
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v6
         with:
@@ -80,7 +80,7 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path 'dist/MewNX.exe','dist/appsettings.json','dist/SHA256SUMS.txt' -DestinationPath 'MewNX-${{ matrix.arch }}.zip' -Force
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: MewNX-${{ matrix.arch }}
           path: MewNX-${{ matrix.arch }}.zip
@@ -99,9 +99,9 @@ jobs:
       SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Download x64 package
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: MewNX-x64
           path: package
@@ -136,7 +136,7 @@ jobs:
           & $signtool.FullName sign /fd SHA256 /f $cert /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td SHA256 'installer-output/MewNX-Setup-x64.exe'
           if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing of the MewNX installer failed.' }
       - name: Upload installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: MewNX-Setup-x64
           path: installer-output/MewNX-Setup-x64.exe
@@ -152,22 +152,22 @@ jobs:
       contents: write
     steps:
       - name: Download x64 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: MewNX-x64
           path: release
       - name: Download ARM64 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: MewNX-arm64
           path: release
       - name: Download x86 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: MewNX-x86
           path: release
       - name: Download installer
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: MewNX-Setup-x64
           path: release
