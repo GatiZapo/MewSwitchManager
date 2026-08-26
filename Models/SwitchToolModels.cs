@@ -28,3 +28,5 @@ public sealed record SwitchToolStatus(
     bool UpdateAvailable,
     string? ReleaseUrl,
     string Message);
+
+public sealed record AutoRcmRequest(bool Enable, bool RequireExplicitConfirmation, string ModelHint = "");
