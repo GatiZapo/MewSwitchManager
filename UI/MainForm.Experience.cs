@@ -7,21 +7,16 @@ namespace MewSwitchManager.UI;
 
 public sealed partial class MainForm
 {
-    private readonly SwitchExperienceService _experienceService = null!;
-    private readonly SwitchCheckpoint _experienceCheckpoint = null!;
+    private SwitchExperienceService _experienceService = null!;
+    private SwitchCheckpoint _experienceCheckpoint = null!;
     private SwitchExperienceCard? _experienceCard;
 
     private void InitializeExperience(AppPaths paths)
     {
-        // The card lives inside the existing health area so the dashboard remains one coherent surface.
         var host = _content.GetControlFromPosition(0, 2) as Panel;
         if (host is null || _experienceCard is not null) return;
-
-        var service = new SwitchExperienceService(_logger);
-        var checkpoint = new SwitchCheckpoint(paths, _logger);
-        typeof(MainForm).GetField("_experienceService", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(this, service);
-        typeof(MainForm).GetField("_experienceCheckpoint", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(this, checkpoint);
-
+        _experienceService = new SwitchExperienceService(_logger);
+        _experienceCheckpoint = new SwitchCheckpoint(paths, _logger);
         _experienceCard = new SwitchExperienceCard();
         _experienceCard.RecommendedClicked += async (_, _) => await PrepareRecommendedAsync();
         _experienceCard.CheckpointClicked += (_, _) => CreateExperienceCheckpoint();
@@ -45,16 +40,9 @@ public sealed partial class MainForm
         var target = GetExperienceTarget();
         if (target is null)
         {
-            _experienceCard.Show(new SwitchExperienceSummary(
-                "Connect the Switch SD card to begin.",
-                Array.Empty<string>(),
-                new[] { "No Switch storage target detected." },
-                Array.Empty<ToolRecommendation>(),
-                new SwitchSdReport("", 0, 0, false, false, false, false, false, false, new[] { "No target detected." }),
-                Array.Empty<SwitchToolHealth>()));
+            _experienceCard.Show(new SwitchExperienceSummary("Connect the Switch SD card to begin.", Array.Empty<string>(), new[] { "No Switch storage target detected." }, Array.Empty<ToolRecommendation>(), new SwitchSdReport("", 0, 0, false, false, false, false, false, false, new[] { "No target detected." }), Array.Empty<SwitchToolHealth>()));
             return;
         }
-
         try
         {
             _experienceCard.ShowLoading();
@@ -90,10 +78,8 @@ public sealed partial class MainForm
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Recommended setup", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
         var recommendations = result.Recommendations.Where(x => x.Recommended).ToArray();
         if (recommendations.Length == 0) { MessageBox.Show(this, "Your current setup has no mandatory recommendations.", "Recommended setup", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
-
         var names = string.Join(Environment.NewLine, recommendations.Select(x => "• " + x.ToolId));
         if (MessageBox.Show(this, $"MewSwitch recommends:\n\n{names}\n\nA checkpoint will be created first. Continue?", "Prepare recommended setup", MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-
         _experienceCheckpoint.Create(target, "Automatic checkpoint before recommended setup");
         _operationCts = new CancellationTokenSource();
         try
