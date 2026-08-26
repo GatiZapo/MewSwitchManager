@@ -85,28 +85,39 @@ public sealed class SwitchComponentManager
         await _releases.DownloadResumableAsync(asset.Url, downloadPath, progress, ct);
         await VerifyDownloadedFileAsync(downloadPath, asset.Digest, ct);
 
-        if (component == SwitchComponent.Dbi)
+        var backupRoot = BackupBeforeUpdate(targetRoot, definition, release.TagName);
+        try
         {
-            BackupBeforeUpdate(targetRoot, definition, release.TagName);
-            var destination = Path.Combine(targetRoot, "switch", "DBI", "DBI.nro");
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(downloadPath, destination, true);
-            if (!File.Exists(destination)) throw new IOException("DBI.nro was not written to the SD card.");
-        }
-        else
-        {
-            var stage = Path.Combine(componentCache, "staging", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(stage);
-            try
+            if (component == SwitchComponent.Dbi)
             {
-                ExtractSafe(downloadPath, stage);
-                var sourceRoot = FindPayloadRoot(stage, definition.DetectionPath);
-                BackupBeforeUpdate(targetRoot, definition, release.TagName);
-                MergeDirectory(sourceRoot, targetRoot);
-                if (!File.Exists(Path.Combine(targetRoot, definition.DetectionPath)))
-                    throw new InvalidDataException($"The downloaded archive did not produce the expected {definition.DetectionPath}.");
+                var destination = Path.Combine(targetRoot, "switch", "DBI", "DBI.nro");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(downloadPath, destination, true);
+                if (!File.Exists(destination)) throw new IOException("DBI.nro was not written to the SD card.");
             }
-            finally { TryDeleteDirectory(stage); }
+            else
+            {
+                var stage = Path.Combine(componentCache, "staging", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(stage);
+                try
+                {
+                    ExtractSafe(downloadPath, stage);
+                    var sourceRoot = FindPayloadRoot(stage, definition.DetectionPath);
+                    MergeDirectory(sourceRoot, targetRoot);
+                    if (!File.Exists(Path.Combine(targetRoot, definition.DetectionPath)))
+                        throw new InvalidDataException($"The downloaded archive did not produce the expected {definition.DetectionPath}.");
+                }
+                finally { TryDeleteDirectory(stage); }
+            }
+        }
+        catch
+        {
+            if (!string.IsNullOrWhiteSpace(backupRoot))
+            {
+                try { RestoreBackup(targetRoot, backupRoot); }
+                catch (Exception restoreEx) { _logger.Error($"Automatic rollback of {definition.Name} failed", restoreEx); }
+            }
+            throw;
         }
 
         _state.LastTargetRoot = targetRoot;
@@ -118,15 +129,12 @@ public sealed class SwitchComponentManager
     }
 
     private Task<GitHubRelease> GetReleaseAsync(ComponentDefinition definition, CancellationToken ct)
-        => definition.Id == SwitchComponent.Dbi
-            ? _releases.GetTagAsync(definition.Repository, "658", ct)
-            : _releases.GetLatestAsync(definition.Repository, ct);
+        => definition.Id == SwitchComponent.Dbi ? _releases.GetTagAsync(definition.Repository, "658", ct) : _releases.GetLatestAsync(definition.Repository, ct);
 
     private static GitHubAsset? SelectAsset(ComponentDefinition definition, GitHubRelease release)
     {
         var assets = release.Assets.Where(a => a.Size > 0).ToList();
-        if (definition.Id == SwitchComponent.Dbi)
-            return assets.FirstOrDefault(a => string.Equals(a.Name, "DBI.nro", StringComparison.OrdinalIgnoreCase));
+        if (definition.Id == SwitchComponent.Dbi) return assets.FirstOrDefault(a => string.Equals(a.Name, "DBI.nro", StringComparison.OrdinalIgnoreCase));
         return assets.FirstOrDefault(a => a.Name.EndsWith(definition.ArchiveHint, StringComparison.OrdinalIgnoreCase)
                                           && !a.Name.Contains("source", StringComparison.OrdinalIgnoreCase)
                                           && !a.Name.Contains("src", StringComparison.OrdinalIgnoreCase));
@@ -145,8 +153,7 @@ public sealed class SwitchComponentManager
         return string.Equals(installed, available, StringComparison.OrdinalIgnoreCase) ? 0 : -1;
     }
 
-    private static List<int> ExtractNumbers(string value) =>
-        System.Text.RegularExpressions.Regex.Matches(value, @"\d+").Select(m => int.TryParse(m.Value, out var n) ? n : 0).ToList();
+    private static List<int> ExtractNumbers(string value) => System.Text.RegularExpressions.Regex.Matches(value, @"\d+").Select(m => int.TryParse(m.Value, out var n) ? n : 0).ToList();
 
     private static async Task VerifyDownloadedFileAsync(string path, string? digest, CancellationToken ct)
     {
@@ -183,7 +190,7 @@ public sealed class SwitchComponentManager
         throw new InvalidDataException($"Archive does not contain expected component path: {detectionPath}");
     }
 
-    private static void BackupBeforeUpdate(string targetRoot, ComponentDefinition definition, string version)
+    private static string BackupBeforeUpdate(string targetRoot, ComponentDefinition definition, string version)
     {
         var candidates = definition.Id switch
         {
@@ -192,7 +199,7 @@ public sealed class SwitchComponentManager
             SwitchComponent.Dbi => new[] { Path.Combine("switch", "DBI") },
             _ => Array.Empty<string>()
         };
-        if (candidates.Length == 0) return;
+        if (candidates.Length == 0) return "";
         var backupRoot = Path.Combine(targetRoot, "_mewswitch-backups", $"{definition.Id}-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{SanitizeFileName(version)}");
         foreach (var relative in candidates)
         {
@@ -202,12 +209,24 @@ public sealed class SwitchComponentManager
             if (Directory.Exists(source)) CopyDirectory(source, destination);
             else { Directory.CreateDirectory(Path.GetDirectoryName(destination)!); File.Copy(source, destination, true); }
         }
+        return backupRoot;
+    }
+
+    private static void RestoreBackup(string targetRoot, string backupRoot)
+    {
+        if (!Directory.Exists(backupRoot)) return;
+        foreach (var file in Directory.GetFiles(backupRoot, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(backupRoot, file);
+            var destination = Path.Combine(targetRoot, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(file, destination, true);
+        }
     }
 
     private static void MergeDirectory(string source, string destination)
     {
-        foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories)) Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
             var target = Path.Combine(destination, Path.GetRelativePath(source, file));
