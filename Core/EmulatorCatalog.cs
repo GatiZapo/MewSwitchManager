@@ -3,24 +3,36 @@ using MewSwitchManager.Models;
 namespace MewSwitchManager.Core;
 
 /// <summary>
-/// Curated emulator/front-end catalog for the Nintendo Switch.
-/// Distribution is intentionally explicit: MewNX never treats an arbitrary web page as a trusted source.
+/// Complete, distributable emulation stack for Switch.
+/// ROMs, BIOS dumps, keys and console firmware are intentionally excluded.
 /// </summary>
 public static class EmulatorCatalog
 {
-    public static IReadOnlyList<EmulatorDefinition> Definitions { get; } =
+    private static readonly string[] RetroArchPreserve =
+    ["retroarch.cfg", "config", "saves", "states", "playlists", "thumbnails", "system"];
+
+    public static IReadOnlyList<EmulationPackageDefinition> Definitions { get; } =
     [
-        new("tico", "tico", "Multi-system frontend", "ticohq/tico", EmulatorDistribution.GitHubRelease, "", "switch/tico/tico.nro", "*.zip", true, "Controller-first emulation frontend with automatic library, metadata and core management.", "Tico cores are distributed separately and managed by Tico. MewNX must not bundle ROMs or BIOS files."),
-        new("retroarch", "RetroArch", "Multi-system / libretro", "libretro/RetroArch", EmulatorDistribution.OfficialBuildbot, "", "switch/retroarch_switch.nro", "RetroArch.7z", true, "Official libretro frontend and core ecosystem for Switch.", "The official Switch bundle is distributed from the libretro buildbot rather than GitHub Releases. Keep the source URL explicit in the installer."),
-        new("dolphin", "Dolphin (Switch port)", "GameCube / Wii", "NaGaa95/dolphin-nx", EmulatorDistribution.GitHubRelease, "", "switch/dolphin/dolphin.nro", "*.zip", true, "Native Switch Dolphin port with a dedicated launcher and game library.", "Compatibility and performance vary by title; do not promise desktop-Dolphin compatibility."),
-        new("ppsspp", "PPSSPP (Switch Community Build)", "PSP", "SirSamael/ppsspp-switch-community-build", EmulatorDistribution.GitHubRelease, "", "switch/ppsspp/PPSSPP.nro", "*.zip", true, "Current community Switch build of PPSSPP with Switch-specific fixes and packaging.", "This is preferred over the older upstream legacy Switch build; runtime settings and compatibility remain build-specific."),
-        new("drastic", "DraStic DS (Switch port)", "Nintendo DS", "NaGaa95/DrasticDS_nx", EmulatorDistribution.ManualOnly, "", "switch/DrasticDS.nro", "*.nro", false, "Native Switch port of DraStic DS.", "Manual-only until redistribution/licensing and release packaging are suitable for automated MewNX distribution. User-provided DS BIOS/firmware remain outside MewNX."),
-        new("azahar", "Azahar (via tico)", "Nintendo 3DS", "ticohq/tico", EmulatorDistribution.ManualOnly, "", "tico/cores", "*.zip", true, "Nintendo 3DS emulation exposed through Tico's core ecosystem.", "MewNX installs/updates the Tico frontend; Tico manages its Azahar core. MewNX does not duplicate the core download mechanism."),
-        new("flycast", "Flycast", "Dreamcast / Naomi", "libretro/flycast", EmulatorDistribution.ManualOnly, "", "retroarch/cores/flycast_libretro_libnx.nro", "*.nro", false, "Dreamcast and arcade emulation, normally consumed as a RetroArch core on Switch.", "Treat this as a RetroArch core rather than a standalone application. Core compatibility can differ across firmware/builds."),
-        new("mgba", "mGBA (via RetroArch)", "Game Boy / Game Boy Color / Game Boy Advance", "libretro/mgba", EmulatorDistribution.ManualOnly, "", "retroarch/cores/mgba_libretro_libnx.nro", "*.nro", false, "Game Boy family emulation through the RetroArch/libretro ecosystem.", "Core distribution should be handled by the RetroArch core manager rather than duplicated by MewNX."),
-        new("scummvm", "ScummVM", "Classic adventure games", "scummvm/scummvm", EmulatorDistribution.ManualOnly, "", "switch/scummvm/scummvm.nro", "*.zip", false, "Interpreter for supported classic adventure engines.", "Keep this cataloged separately from libretro cores; packaging varies by Switch build.")
+        new("tico", "tico frontend", "Multi-system launcher", EmulationSourceKind.GitHubRelease, "ticohq/tico", "tico.nro", "switch/tico/tico.nro", EmulationInstallMode.DirectFile, true, "Controller-first frontend; its external cores are installed below."),
+        new("retroarch", "RetroArch + full core/asset bundle", "Multi-system / libretro", EmulationSourceKind.OfficialBundle, "", "RetroArch.7z", "", EmulationInstallMode.ArchiveToRoot, true, "Official Switch bundle containing RetroArch, all bundled cores and assets. User configuration, saves, states, playlists, thumbnails and BIOS/system files are preserved.", RetroArchPreserve),
+
+        new("tico-fceumm", "tico FCEUmm", "NES / Famicom", EmulationSourceKind.GitHubRelease, "ticohq/tico-fceumm", "tico-fceumm.nro", "tico/cores/tico-fceumm.nro", EmulationInstallMode.DirectFile, true, "Tico NES/Famicom core."),
+        new("tico-snes9x", "tico Snes9x", "SNES / Super Famicom", EmulationSourceKind.GitHubRelease, "ticohq/tico-snes9x", "tico-snes9x.nro", "tico/cores/tico-snes9x.nro", EmulationInstallMode.DirectFile, true, "Tico SNES core."),
+        new("tico-mupen64", "tico Mupen64Plus-Next", "Nintendo 64", EmulationSourceKind.GitHubRelease, "ticohq/tico-mupen64plus", "tico-mupen64plus.nro", "tico/cores/tico-mupen64plus.nro", EmulationInstallMode.DirectFile, true, "Tico N64 core."),
+        new("tico-dolphin", "tico Dolphin", "GameCube / Wii", EmulationSourceKind.GitHubRelease, "ticohq/tico-dolphin", "tico-dolphin.nro", "tico/cores/tico-dolphin.nro", EmulationInstallMode.DirectFile, true, "Tico GameCube/Wii core; one NRO serves both systems."),
+        new("tico-gambatte", "tico Gambatte", "Game Boy / Game Boy Color", EmulationSourceKind.GitHubRelease, "ticohq/tico-gambatte", "tico-gambatte.nro", "tico/cores/tico-gambatte.nro", EmulationInstallMode.DirectFile, true, "Tico GB/GBC core."),
+        new("tico-mgba", "tico mGBA", "Game Boy Advance", EmulationSourceKind.GitHubRelease, "ticohq/tico-mgba", "tico-mgba.nro", "tico/cores/tico-mgba.nro", EmulationInstallMode.DirectFile, true, "Tico GBA core."),
+        new("tico-azahar", "tico Azahar", "Nintendo 3DS", EmulationSourceKind.GitHubRelease, "ticohq/tico-azahar", "tico-azahar.nro", "tico/cores/tico-azahar.nro", EmulationInstallMode.DirectFile, true, "Tico 3DS core."),
+        new("tico-genesis", "tico Genesis Plus GX", "Master System / Game Gear / Genesis / Sega CD", EmulationSourceKind.GitHubRelease, "ticohq/tico-genesisplusgx", "tico-genesisplusgx.nro", "tico/cores/tico-genesisplusgx.nro", EmulationInstallMode.DirectFile, true, "Tico Sega 8/16-bit and Sega CD core."),
+        new("tico-yabause", "tico YabaSanshiro", "Sega Saturn", EmulationSourceKind.GitHubRelease, "ticohq/tico-yabasanshiro", "tico-yabasanshiro.nro", "tico/cores/tico-yabasanshiro.nro", EmulationInstallMode.DirectFile, true, "Tico Saturn core."),
+        new("tico-flycast", "tico Flycast", "Dreamcast / Naomi / Atomiswave", EmulationSourceKind.GitHubRelease, "ticohq/tico-flycast", "tico-flycast.nro", "tico/cores/tico-flycast.nro", EmulationInstallMode.DirectFile, true, "Tico Dreamcast/Naomi/Atomiswave core."),
+        new("tico-fbneo", "tico FBNeo", "Arcade / FinalBurn Neo", EmulationSourceKind.GitHubRelease, "ticohq/tico-fbneo", "tico-fbneo.nro", "tico/cores/tico-fbneo.nro", EmulationInstallMode.DirectFile, true, "Tico FinalBurn Neo arcade core."),
+        new("tico-duckstation", "tico DuckStation", "PlayStation", EmulationSourceKind.GitHubRelease, "ticohq/tico-duckstation", "tico-duckstation.nro", "tico/cores/tico-duckstation.nro", EmulationInstallMode.DirectFile, true, "Tico PlayStation core."),
+        new("tico-ppsspp", "tico PPSSPP", "PSP", EmulationSourceKind.GitHubRelease, "ticohq/tico-ppsspp", "tico-ppsspp.nro", "tico/cores/tico-ppsspp.nro", EmulationInstallMode.DirectFile, true, "Tico PSP core.")
     ];
 
-    public static EmulatorDefinition? Find(string id)
+    public static IReadOnlyList<EmulationPackageDefinition> FullStack => Definitions.Where(x => x.RequiredForFullStack).ToArray();
+
+    public static EmulationPackageDefinition? Find(string id)
         => Definitions.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 }
