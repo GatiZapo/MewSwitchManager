@@ -38,9 +38,9 @@ jobs:
             rid: win-x86
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup .NET 8 SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
       - name: Clean stale output
@@ -80,7 +80,7 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path 'dist/MewNX.exe','dist/appsettings.json','dist/SHA256SUMS.txt' -DestinationPath 'MewNX-${{ matrix.arch }}.zip' -Force
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: MewNX-${{ matrix.arch }}
           path: MewNX-${{ matrix.arch }}.zip
@@ -99,7 +99,7 @@ jobs:
       SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Download x64 package
         uses: actions/download-artifact@v4
         with:
@@ -136,7 +136,7 @@ jobs:
           & $signtool.FullName sign /fd SHA256 /f $cert /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td SHA256 'installer-output/MewNX-Setup-x64.exe'
           if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing of the MewNX installer failed.' }
       - name: Upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: MewNX-Setup-x64
           path: installer-output/MewNX-Setup-x64.exe
