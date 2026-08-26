@@ -32,7 +32,12 @@ public sealed class SwitchToolInstaller
         Directory.CreateDirectory(cache);
         var file = Path.Combine(cache, Sanitize(asset.Name));
         await _releases.DownloadResumableAsync(asset.Url, file, progress, ct);
-        await VerifyAsync(file, asset.Digest, ct);
+
+        // Downloads stay in .part until integrity verification succeeds. This is
+        // what makes interrupted downloads resumable without promoting corrupt data.
+        var part = file + ".part";
+        await VerifyAsync(part, asset.Digest, ct);
+        _releases.PromotePart(file);
 
         var backup = BackupDestination(targetRoot, definition.Destination);
         try
@@ -60,7 +65,8 @@ public sealed class SwitchToolInstaller
         }
         catch
         {
-            try { Restore(targetRoot, backup); } catch (Exception ex) { _logger.Error($"Rollback failed for {definition.Name}", ex); }
+            try { Restore(targetRoot, backup, definition.Destination); }
+            catch (Exception ex) { _logger.Error($"Rollback failed for {definition.Name}", ex); }
             throw;
         }
 
@@ -140,16 +146,26 @@ public sealed class SwitchToolInstaller
         return backup;
     }
 
-    private static void Restore(string targetRoot, string backup)
+    private static void Restore(string targetRoot, string backup, string relative)
     {
-        if (string.IsNullOrWhiteSpace(backup) || !Directory.Exists(backup)) return;
-        foreach (var file in Directory.GetFiles(backup, "*", SearchOption.AllDirectories))
+        var destination = Path.Combine(targetRoot, relative);
+        if (string.IsNullOrWhiteSpace(backup) || !Directory.Exists(backup))
         {
-            var relative = Path.GetRelativePath(backup, file);
-            var destination = Path.Combine(targetRoot, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(file, destination, true);
+            if (File.Exists(destination)) File.Delete(destination);
+            else if (Directory.Exists(destination)) Directory.Delete(destination, true);
+            return;
         }
+
+        if (File.Exists(destination)) File.Delete(destination);
+        else if (Directory.Exists(destination)) Directory.Delete(destination, true);
+
+        var backupPath = Path.Combine(backup, relative);
+        if (File.Exists(backupPath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(backupPath, destination, true);
+        }
+        else if (Directory.Exists(backupPath)) CopyDirectory(backupPath, destination);
     }
 
     private static void Merge(string source, string destination)
@@ -166,6 +182,7 @@ public sealed class SwitchToolInstaller
     private static void CopyDirectory(string source, string destination)
     {
         Directory.CreateDirectory(destination);
+        foreach (var dir in Directory.GetDirectories(source, "*", SearchOption.AllDirectories)) Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, dir)));
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
             var target = Path.Combine(destination, Path.GetRelativePath(source, file));
