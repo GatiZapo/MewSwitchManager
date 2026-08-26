@@ -30,15 +30,14 @@ public sealed partial class MainForm
         _aioActivity.BackColor = Theme.Surface;
         _aioActivity.Margin = new Padding(14, 0, 14, 10);
         _aioActivity.Padding = new Padding(14, 10, 14, 10);
-        _aioActivity.Paint += (_, e) => Theme.Round(e.Graphics,
-            new Rectangle(0, 0, _aioActivity.Width - 1, _aioActivity.Height - 1), 14,
-            Theme.Surface, Theme.Border);
+        _aioActivity.Paint += (_, e) => Theme.TechnicalFrame(e.Graphics,
+            new Rectangle(0, 0, _aioActivity.Width, _aioActivity.Height), Theme.BorderStrong);
 
         _aioActivityTitle.Text = "ACTIVE OPERATION";
         _aioActivityTitle.Dock = DockStyle.Top;
         _aioActivityTitle.Height = 22;
         _aioActivityTitle.ForeColor = Theme.Text;
-        _aioActivityTitle.Font = Theme.UI(10.5f, FontStyle.Bold);
+        _aioActivityTitle.Font = Theme.Mono(9.2f, FontStyle.Bold);
 
         _aioActivityState.Text = "READY — no operation running";
         _aioActivityState.Dock = DockStyle.Right;
@@ -61,15 +60,16 @@ public sealed partial class MainForm
         var nav = _sidebar.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
         if (nav is null) return;
         nav.Controls.Clear();
-        nav.Height = 330;
+        nav.Height = 380;
         nav.Padding = new Padding(0, 14, 0, 0);
         AddAioNavButton(nav, "01   HOME", "Home");
         AddAioNavButton(nav, "02   INSTALL", "Install");
         AddAioNavButton(nav, "03   SWITCH TOOLS", "Switch Tools");
         AddAioNavButton(nav, "04   EMULATION", "Emulation");
-        AddAioNavButton(nav, "05   RECOVERY", "Recovery");
-        AddAioNavButton(nav, "06   DIAGNOSTICS", "Diagnostics");
-        AddAioNavButton(nav, "07   UPDATES", "Updates");
+        AddAioNavButton(nav, "05   GAME CENTER", "Game Center");
+        AddAioNavButton(nav, "06   RECOVERY", "Recovery");
+        AddAioNavButton(nav, "07   DIAGNOSTICS", "Diagnostics");
+        AddAioNavButton(nav, "08   UPDATES", "Updates");
     }
 
     private void AddAioNavButton(FlowLayoutPanel nav, string text, string page)
@@ -109,7 +109,7 @@ public sealed partial class MainForm
         var groups = new Dictionary<string, List<Control>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Home"] = [], ["Install"] = [], ["Switch Tools"] = [], ["Emulation"] = [],
-            ["Recovery"] = [], ["Diagnostics"] = [], ["Updates"] = []
+            ["Game Center"] = [], ["Recovery"] = [], ["Diagnostics"] = [], ["Updates"] = []
         };
         foreach (var control in oldControls) groups[ClassifyAioControl(control)].Add(control);
 
@@ -147,6 +147,7 @@ public sealed partial class MainForm
         if (text.Contains("TARGET USB", StringComparison.OrdinalIgnoreCase) || text.Contains("INSTALLATION PROGRESS", StringComparison.OrdinalIgnoreCase) || text.Contains("USB WORKFLOW", StringComparison.OrdinalIgnoreCase)) return "Install";
         if (text.Contains("SWITCH TOOLS", StringComparison.OrdinalIgnoreCase) || text.Contains("SWITCH MANAGER", StringComparison.OrdinalIgnoreCase)) return "Switch Tools";
         if (text.Contains("EMULATION CENTER", StringComparison.OrdinalIgnoreCase)) return "Emulation";
+        if (text.Contains("GAME CENTER", StringComparison.OrdinalIgnoreCase)) return "Game Center";
         if (text.Contains("RECOVERY CENTER", StringComparison.OrdinalIgnoreCase)) return "Recovery";
         if (text.Contains("UPDATE CENTER", StringComparison.OrdinalIgnoreCase)) return "Updates";
         if (text.Contains("LIVE OPERATION LOG", StringComparison.OrdinalIgnoreCase) || text.Contains("Safety gates active", StringComparison.OrdinalIgnoreCase)) return "Diagnostics";
@@ -175,7 +176,7 @@ public sealed partial class MainForm
             Padding = new Padding(2, 0, 0, 8),
             Margin = new Padding(0, 0, 0, 6)
         };
-        var title = new Label { Dock = DockStyle.Top, Height = 38, Text = page.ToUpperInvariant(), ForeColor = Theme.Text, Font = Theme.UI(23, FontStyle.Bold), AutoEllipsis = true };
+        var title = new Label { Dock = DockStyle.Top, Height = 38, Text = page.ToUpperInvariant(), ForeColor = Theme.Text, Font = Theme.Mono(18, FontStyle.Bold), AutoEllipsis = true };
         var subtitle = new Label
         {
             Dock = DockStyle.Fill,
@@ -185,6 +186,7 @@ public sealed partial class MainForm
                 "Install" => "Prepare and write Switch Linux media with guarded, resumable steps.",
                 "Switch Tools" => "Manage Switch components, AIO tools and RCM helpers.",
                 "Emulation" => "Install and update the managed emulator stack and dependencies.",
+                "Game Center" => "Index, verify and stage user-provided content through controlled installer workflows.",
                 "Recovery" => "Create, inspect and restore MewNX checkpoints safely.",
                 "Diagnostics" => "Logs, health signals and technical diagnostics.",
                 "Updates" => "Check and install the latest MewNX build.",
