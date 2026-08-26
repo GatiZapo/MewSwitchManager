@@ -19,7 +19,7 @@ public sealed class LinuxImageService
         _logger = logger;
         _config = config;
         _http.Timeout = Timeout.InfiniteTimeSpan;
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MewSwitch-Manager/0.2");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MewSwitch-Manager/0.4");
     }
 
     public string FinalPath(string cacheDirectory) => Path.Combine(cacheDirectory, _config.LinuxImage.FileName);
@@ -181,8 +181,22 @@ public sealed class LinuxImageService
 
     private static void ReplaceAtomically(string source, string destination)
     {
-        if (File.Exists(destination)) File.Delete(destination);
-        File.Move(source, destination);
+        if (!File.Exists(destination))
+        {
+            File.Move(source, destination);
+            return;
+        }
+
+        try
+        {
+            // Keep the previously verified image intact until the replacement succeeds.
+            File.Replace(source, destination, null, ignoreMetadataErrors: true);
+        }
+        catch (PlatformNotSupportedException)
+        {
+            // The manager currently runs on Windows, but keep a safe fallback for test environments.
+            File.Move(source, destination, overwrite: true);
+        }
     }
 
     private static void DeleteIfExists(string path)
