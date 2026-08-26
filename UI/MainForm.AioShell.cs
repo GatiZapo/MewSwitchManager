@@ -25,27 +25,22 @@ public sealed partial class MainForm
         root.RowCount = 2;
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
         _aioActivity.Dock = DockStyle.Fill;
         _aioActivity.BackColor = Theme.Surface;
         _aioActivity.Margin = new Padding(14, 0, 14, 10);
         _aioActivity.Padding = new Padding(14, 10, 14, 10);
-        _aioActivity.Paint += (_, e) => Theme.TechnicalFrame(e.Graphics,
-            new Rectangle(0, 0, _aioActivity.Width, _aioActivity.Height), Theme.BorderStrong);
-
+        _aioActivity.Paint += (_, e) => Theme.TechnicalFrame(e.Graphics, new Rectangle(0, 0, _aioActivity.Width, _aioActivity.Height), Theme.BorderStrong);
         _aioActivityTitle.Text = "ACTIVE OPERATION";
         _aioActivityTitle.Dock = DockStyle.Top;
         _aioActivityTitle.Height = 22;
         _aioActivityTitle.ForeColor = Theme.Text;
         _aioActivityTitle.Font = Theme.Mono(9.2f, FontStyle.Bold);
-
         _aioActivityState.Text = "READY — no operation running";
         _aioActivityState.Dock = DockStyle.Right;
         _aioActivityState.Width = 300;
         _aioActivityState.TextAlign = ContentAlignment.MiddleRight;
         _aioActivityState.ForeColor = Theme.Green;
         _aioActivityState.Font = Theme.Mono(7.8f, FontStyle.Bold);
-
         if (_progress.Parent is not null) _progress.Parent.Controls.Remove(_progress);
         _progress.Dock = DockStyle.Fill;
         _progress.Margin = Padding.Empty;
@@ -60,16 +55,17 @@ public sealed partial class MainForm
         var nav = _sidebar.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
         if (nav is null) return;
         nav.Controls.Clear();
-        nav.Height = 380;
+        nav.Height = 420;
         nav.Padding = new Padding(0, 14, 0, 0);
         AddAioNavButton(nav, "01   HOME", "Home");
         AddAioNavButton(nav, "02   INSTALL", "Install");
         AddAioNavButton(nav, "03   SWITCH TOOLS", "Switch Tools");
         AddAioNavButton(nav, "04   EMULATION", "Emulation");
         AddAioNavButton(nav, "05   GAME CENTER", "Game Center");
-        AddAioNavButton(nav, "06   RECOVERY", "Recovery");
-        AddAioNavButton(nav, "07   DIAGNOSTICS", "Diagnostics");
-        AddAioNavButton(nav, "08   UPDATES", "Updates");
+        AddAioNavButton(nav, "06   AUTO MODE", "Auto Mode");
+        AddAioNavButton(nav, "07   RECOVERY", "Recovery");
+        AddAioNavButton(nav, "08   DIAGNOSTICS", "Diagnostics");
+        AddAioNavButton(nav, "09   UPDATES", "Updates");
     }
 
     private void AddAioNavButton(FlowLayoutPanel nav, string text, string page)
@@ -102,28 +98,17 @@ public sealed partial class MainForm
         _scrollHost.Controls.Clear();
         _scrollHost.AutoScroll = false;
         _scrollHost.Padding = new Padding(14, 0, 14, 0);
-
         var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background, Margin = Padding.Empty, Padding = Padding.Empty };
         _scrollHost.Controls.Add(host);
-
         var groups = new Dictionary<string, List<Control>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Home"] = [], ["Install"] = [], ["Switch Tools"] = [], ["Emulation"] = [],
-            ["Game Center"] = [], ["Recovery"] = [], ["Diagnostics"] = [], ["Updates"] = []
+            ["Home"] = [], ["Install"] = [], ["Switch Tools"] = [], ["Emulation"] = [], ["Game Center"] = [],
+            ["Auto Mode"] = [], ["Recovery"] = [], ["Diagnostics"] = [], ["Updates"] = []
         };
         foreach (var control in oldControls) groups[ClassifyAioControl(control)].Add(control);
-
         foreach (var group in groups)
         {
-            var page = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Theme.Background,
-                AutoScroll = true,
-                Padding = new Padding(0, 0, 0, 10),
-                Visible = false,
-                Tag = group.Key
-            };
+            var page = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background, AutoScroll = true, Padding = new Padding(0, 0, 0, 10), Visible = false, Tag = group.Key };
             var heading = CreateAioPageHeading(group.Key);
             page.Controls.Add(heading);
             foreach (var control in group.Value)
@@ -144,13 +129,14 @@ public sealed partial class MainForm
     private static string ClassifyAioControl(Control control)
     {
         var text = CollectText(control);
+        if (text.Contains("AUTO MODE / OPERATION PLAN", StringComparison.OrdinalIgnoreCase)) return "Auto Mode";
         if (text.Contains("TARGET USB", StringComparison.OrdinalIgnoreCase) || text.Contains("INSTALLATION PROGRESS", StringComparison.OrdinalIgnoreCase) || text.Contains("USB WORKFLOW", StringComparison.OrdinalIgnoreCase)) return "Install";
         if (text.Contains("SWITCH TOOLS", StringComparison.OrdinalIgnoreCase) || text.Contains("SWITCH MANAGER", StringComparison.OrdinalIgnoreCase)) return "Switch Tools";
         if (text.Contains("EMULATION CENTER", StringComparison.OrdinalIgnoreCase)) return "Emulation";
         if (text.Contains("GAME CENTER", StringComparison.OrdinalIgnoreCase)) return "Game Center";
         if (text.Contains("RECOVERY CENTER", StringComparison.OrdinalIgnoreCase)) return "Recovery";
         if (text.Contains("UPDATE CENTER", StringComparison.OrdinalIgnoreCase)) return "Updates";
-        if (text.Contains("LIVE OPERATION LOG", StringComparison.OrdinalIgnoreCase) || text.Contains("Safety gates active", StringComparison.OrdinalIgnoreCase)) return "Diagnostics";
+        if (text.Contains("SYSTEM DIAGNOSTICS", StringComparison.OrdinalIgnoreCase) || text.Contains("LIVE OPERATION LOG", StringComparison.OrdinalIgnoreCase) || text.Contains("Safety gates active", StringComparison.OrdinalIgnoreCase)) return "Diagnostics";
         return "Home";
     }
 
@@ -168,14 +154,7 @@ public sealed partial class MainForm
 
     private Control CreateAioPageHeading(string page)
     {
-        var panel = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 78,
-            BackColor = Theme.Background,
-            Padding = new Padding(2, 0, 0, 8),
-            Margin = new Padding(0, 0, 0, 6)
-        };
+        var panel = new Panel { Dock = DockStyle.Top, Height = 78, BackColor = Theme.Background, Padding = new Padding(2, 0, 0, 8), Margin = new Padding(0, 0, 0, 6) };
         var title = new Label { Dock = DockStyle.Top, Height = 38, Text = page.ToUpperInvariant(), ForeColor = Theme.Text, Font = Theme.Mono(18, FontStyle.Bold), AutoEllipsis = true };
         var subtitle = new Label
         {
@@ -187,6 +166,7 @@ public sealed partial class MainForm
                 "Switch Tools" => "Manage Switch components, AIO tools and RCM helpers.",
                 "Emulation" => "Install and update the managed emulator stack and dependencies.",
                 "Game Center" => "Index, verify and stage user-provided content through controlled installer workflows.",
+                "Auto Mode" => "Plan, resume and automate safe installation work without bypassing destructive-action gates.",
                 "Recovery" => "Create, inspect and restore MewNX checkpoints safely.",
                 "Diagnostics" => "Logs, health signals and technical diagnostics.",
                 "Updates" => "Check and install the latest MewNX build.",
