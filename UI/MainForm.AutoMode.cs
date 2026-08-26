@@ -24,6 +24,14 @@ public sealed partial class MainForm
             button.Width = 194;
             nav.Controls.Add(button);
         }
+        foreach (var label in Flatten(_sidebar).OfType<Label>())
+        {
+            if (label.Text.Contains("0.3 ALPHA", StringComparison.OrdinalIgnoreCase)) label.Text = "MANAGER  //  0.4 ALPHA";
+        }
+        foreach (var label in Flatten(_compactNav).OfType<Label>())
+        {
+            if (label.Text.Contains("0.3 ALPHA", StringComparison.OrdinalIgnoreCase)) label.Text = "0.4 ALPHA";
+        }
         RefreshAutoPlan();
     }
 
