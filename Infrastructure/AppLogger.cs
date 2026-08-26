@@ -13,12 +13,16 @@ public sealed class AppLogger
     public AppLogger(string file)
     {
         _file = file;
-        var directory = Path.GetDirectoryName(_file);
-        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+        try
+        {
+            var directory = Path.GetDirectoryName(_file);
+            if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+        }
+        catch { }
         Info($"MewNX session started. Log: {_file}");
     }
 
-    public void Debug(string text) => Write("DEBUG", text);
+    public void Debug(string text) => Write("DEBUG", text, notify: false);
     public void Info(string text) => Write("INFO", text);
     public void Warn(string text) => Write("WARN", text);
     public void Error(string text, Exception? ex = null)
@@ -29,14 +33,8 @@ public sealed class AppLogger
         var line = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz}] [{level}] {text}";
         lock (_gate)
         {
-            try
-            {
-                File.AppendAllText(_file, line + Environment.NewLine);
-            }
-            catch
-            {
-                // Logging must never crash or block the operation it is observing.
-            }
+            try { File.AppendAllText(_file, line + Environment.NewLine); }
+            catch { }
         }
         if (notify) Message?.Invoke(line);
     }
