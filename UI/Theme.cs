@@ -4,6 +4,8 @@ namespace MewSwitchManager.UI;
 
 public static class Theme
 {
+    // MewNX technical-console palette. Pink/blue are identity accents;
+    // green/amber/red communicate state and are never decorative.
     public static readonly Color Background = Color.FromArgb(5, 6, 10);
     public static readonly Color Surface = Color.FromArgb(11, 13, 20);
     public static readonly Color Surface2 = Color.FromArgb(17, 19, 28);
@@ -26,11 +28,21 @@ public static class Theme
     public static void Round(Graphics g, Rectangle rect, int radius, Color fill, Color border)
     {
         if (rect.Width <= 1 || rect.Height <= 1) return;
-        using var path = RoundedRect(rect, radius);
+        // Technical panels intentionally stay almost square. The radius argument
+        // is retained for source compatibility with the existing control set.
+        var technicalRadius = Math.Min(4, Math.Max(1, radius));
+        using var path = RoundedRect(rect, technicalRadius);
         using var brush = new SolidBrush(fill);
         using var pen = new Pen(border, 1);
         g.FillPath(brush, path);
         g.DrawPath(pen, path);
+    }
+
+    public static void TechnicalFrame(Graphics g, Rectangle rect, Color border, int thickness = 1)
+    {
+        if (rect.Width <= 1 || rect.Height <= 1) return;
+        using var pen = new Pen(border, thickness);
+        g.DrawRectangle(pen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
     }
 
     public static void AccentLine(Graphics g, Rectangle rect, Color color, int thickness = 2)
