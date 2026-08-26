@@ -7,7 +7,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>MewSwitch Manager</AssemblyName>
+    <AssemblyName>MewNX</AssemblyName>
     <RootNamespace>MewSwitchManager</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>AnyCPU;x86;x64;ARM64</Platforms>
@@ -30,6 +30,8 @@
   <ItemGroup>
     <PackageReference Include="SharpCompress" Version="0.50.4" />
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
+    <AssemblyMetadata Include="ProductName" Value="MewNX" />
+    <AssemblyMetadata Include="ProductDescription" Value="Advanced Nintendo Switch Toolkit" />
     <AssemblyMetadata Include="GitCommit" Value="$(GitCommit)" Condition="'$(GitCommit)' != ''" />
   </ItemGroup>
 </Project>
