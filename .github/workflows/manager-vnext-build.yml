@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/manager-vnext]
   pull_request:
-    branches: [feature/manager-vnext]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -19,8 +19,10 @@ jobs:
       matrix:
         rid: [win-x64, win-arm64, win-x86]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
       - name: Restore
