@@ -9,6 +9,7 @@ public sealed partial class MainForm : Form
     private readonly InstallationEngine _engine;
     private readonly AppLogger _logger;
     private readonly AppConfig _config;
+    private readonly AppPaths _paths;
     private readonly UpdateService _updateService;
 
     private readonly NeonProgressBar _progress = new();
@@ -35,11 +36,12 @@ public sealed partial class MainForm : Form
     private bool _suppressDiskSelection;
 
     public static MainForm CreateDefault(AppPaths paths, AppLogger logger, AppConfig config)
-        => new(new InstallationEngine(paths, config, logger), logger, config);
+        => new(new InstallationEngine(paths, config, logger), paths, logger, config);
 
-    private MainForm(InstallationEngine engine, AppLogger logger, AppConfig config)
+    private MainForm(InstallationEngine engine, AppPaths paths, AppLogger logger, AppConfig config)
     {
         _engine = engine;
+        _paths = paths;
         _logger = logger;
         _config = config;
         _updateService = new UpdateService(logger);
@@ -57,7 +59,7 @@ public sealed partial class MainForm : Form
         DoubleBuffered = true;
 
         BuildUi();
-        InitializeManagerCenter(paths);
+        InitializeManagerCenter(_paths);
         InitializeUpdateCenter();
         ApplyVisualPolish();
         EnableDarkTitleBar();
