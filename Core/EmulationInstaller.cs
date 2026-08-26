@@ -28,10 +28,7 @@ public sealed class EmulationInstaller
         foreach (var definition in EmulatorCatalog.FullStack)
         {
             ct.ThrowIfCancellationRequested();
-            try
-            {
-                results.Add(await InstallOrUpdateAsync(definition, targetRoot, progress, ct));
-            }
+            try { results.Add(await InstallOrUpdateAsync(definition, targetRoot, progress, ct)); }
             catch (Exception ex)
             {
                 failures.Add(new InvalidOperationException($"{definition.Name}: {ex.Message}", ex));
@@ -47,7 +44,6 @@ public sealed class EmulationInstaller
                 try { RestoreBackup(targetRoot, results[i].BackupPath, results[i].Definition); }
                 catch (Exception ex) { _logger.Error($"Full emulation rollback failed for {results[i].Definition.Name}", ex); }
             }
-
             throw new AggregateException("The complete emulation stack could not be installed. No partial emulation installation was left on the SD card.", failures);
         }
 
@@ -64,9 +60,6 @@ public sealed class EmulationInstaller
         var downloadPath = Path.Combine(cache, Sanitize(assetName));
         await _releases.DownloadResumableAsync(url, downloadPath, progress, ct);
 
-        // Keep the completed payload in .part until its digest/content has been
-        // verified. This preserves resumability and prevents a bad download
-        // from replacing a previously valid cached component.
         var partPath = downloadPath + ".part";
         await VerifyDownloadedFileAsync(partPath, digest, ct);
         _releases.PromotePart(downloadPath);
@@ -139,7 +132,6 @@ public sealed class EmulationInstaller
     {
         var backupRoot = Path.Combine(targetRoot, "_mewswitch-backups", "emulation", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Sanitize(definition.Id)}");
         var copied = false;
-
         if (definition.InstallMode == EmulationInstallMode.DirectFile)
         {
             var source = Path.Combine(targetRoot, definition.Destination);
@@ -164,7 +156,6 @@ public sealed class EmulationInstaller
                 copied = true;
             }
         }
-
         return copied ? backupRoot : "";
     }
 
@@ -194,7 +185,6 @@ public sealed class EmulationInstaller
             if (File.Exists(destination)) File.Delete(destination);
             return;
         }
-
         MergeDirectory(backupRoot, targetRoot);
     }
 
@@ -204,7 +194,9 @@ public sealed class EmulationInstaller
         using var archive = ArchiveFactory.OpenArchive(archivePath);
         foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
         {
-            var relative = entry.Key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var key = entry.Key;
+            if (string.IsNullOrWhiteSpace(key)) throw new InvalidDataException("Archive contains an entry without a path.");
+            var relative = key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
             var full = Path.GetFullPath(Path.Combine(destination, relative));
             if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Archive contains an unsafe path.");
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
