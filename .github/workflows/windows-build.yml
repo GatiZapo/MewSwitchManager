@@ -48,8 +48,8 @@ jobs:
         run: Remove-Item -Recurse -Force -Path bin,obj,dist -ErrorAction SilentlyContinue
       - name: Restore
         run: dotnet restore $env:PROJECT
-      - name: Build Release
-        run: dotnet build $env:PROJECT -c Release --no-restore -p:GitCommit=${{ github.sha }}
+      - name: Build Release (warnings are errors)
+        run: dotnet build $env:PROJECT -c Release --no-restore -p:GitCommit=${{ github.sha }} -warnaserror
       - name: Publish self-contained single-file
         shell: pwsh
         run: dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GitCommit=${{ github.sha }} --no-restore -o dist
