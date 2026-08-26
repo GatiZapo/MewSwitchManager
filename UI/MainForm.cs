@@ -1,3 +1,4 @@
+using System.Drawing;
 using MewSwitchManager.Core;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
@@ -46,9 +47,9 @@ public sealed partial class MainForm : Form
         _config = config;
         _updateService = new UpdateService(logger);
 
-        Text = "MewSwitch Manager";
+        Text = "MewNX";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(760, 620);
+        MinimumSize = new Size(900, 650);
         Size = new Size(1420, 900);
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96, 96);
@@ -57,6 +58,13 @@ public sealed partial class MainForm : Form
         Font = Theme.UI(9.5f);
         KeyPreview = true;
         DoubleBuffered = true;
+
+        // ApplicationIcon controls the EXE icon, but WinForms does not automatically use
+        // that icon for the window/taskbar in every single-file publish configuration.
+        // Extract the embedded executable icon so the running MewNX window and taskbar
+        // entry use the same branding.
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+        catch (Exception ex) { logger.Warn($"Could not load MewNX window icon: {ex.Message}"); }
 
         BuildUi();
         InitializeManagerCenter(_paths);
