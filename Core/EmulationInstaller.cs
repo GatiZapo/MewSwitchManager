@@ -8,7 +8,7 @@ namespace MewSwitchManager.Core;
 
 public sealed class EmulationInstaller
 {
-    private const string RetroArchBundleUrl = "https://buildbot.libretro.com/nightly/nintendo/switch/libnx/latest/RetroArch.7z";
+    private const string RetroArchBundleUrl = "https://buildbot.libretro.com/nightly/nintendo/switch/libnx/RetroArch.7z";
     private readonly AppPaths _paths;
     private readonly AppLogger _logger;
     private readonly GitHubReleaseClient _releases;
@@ -22,40 +22,25 @@ public sealed class EmulationInstaller
 
     public static long RecommendedFreeBytes => 4L * 1024 * 1024 * 1024;
 
-    public async Task<IReadOnlyList<EmulationInstallResult>> InstallFullStackAsync(
-        string targetRoot,
-        IProgress<DownloadProgress>? progress = null,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<EmulationInstallResult>> InstallFullStackAsync(string targetRoot, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
         ValidateTarget(targetRoot);
         EnsureFreeSpace(targetRoot);
-
         var results = new List<EmulationInstallResult>();
         foreach (var definition in EmulatorCatalog.FullStack)
         {
             ct.ThrowIfCancellationRequested();
-            try
-            {
-                results.Add(await InstallOrUpdateAsync(definition, targetRoot, progress, ct));
-            }
-            catch (Exception ex)
-            {
-                _logger.Warn($"Emulation component {definition.Name} was skipped: {ex.Message}");
-            }
+            try { results.Add(await InstallOrUpdateAsync(definition, targetRoot, progress, ct)); }
+            catch (Exception ex) { _logger.Warn($"Emulation component {definition.Name} was skipped: {ex.Message}"); }
         }
         return results;
     }
 
-    public async Task<EmulationInstallResult> InstallOrUpdateAsync(
-        EmulationPackageDefinition definition,
-        string targetRoot,
-        IProgress<DownloadProgress>? progress = null,
-        CancellationToken ct = default)
+    public async Task<EmulationInstallResult> InstallOrUpdateAsync(EmulationPackageDefinition definition, string targetRoot, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
         ValidateTarget(targetRoot);
         var cache = Path.Combine(_paths.CacheDirectory, "emulation", definition.Id);
         Directory.CreateDirectory(cache);
-
         var (version, url, digest, assetName) = await ResolveSourceAsync(definition, ct);
         var downloadPath = Path.Combine(cache, Sanitize(assetName));
         await _releases.DownloadResumableAsync(url, downloadPath, progress, ct);
@@ -92,7 +77,6 @@ public sealed class EmulationInstaller
             catch (Exception ex) { _logger.Error($"Rollback failed for {definition.Name}", ex); }
             throw;
         }
-
         return new EmulationInstallResult(definition, version, backup, $"{definition.Name} installed/updated to {version}.");
     }
 
@@ -100,7 +84,6 @@ public sealed class EmulationInstaller
     {
         if (definition.SourceKind == EmulationSourceKind.OfficialBundle)
             return ("nightly", RetroArchBundleUrl, null, definition.AssetName);
-
         var release = await _releases.GetLatestAsync(definition.Repository, ct);
         var asset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, definition.AssetName, StringComparison.OrdinalIgnoreCase));
         if (asset is null) throw new InvalidOperationException($"No {definition.AssetName} asset was found in {definition.Repository} release {release.TagName}.");
@@ -125,7 +108,6 @@ public sealed class EmulationInstaller
     {
         var backupRoot = Path.Combine(targetRoot, "_mewswitch-backups", "emulation", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Sanitize(definition.Id)}");
         var copied = false;
-
         if (definition.InstallMode == EmulationInstallMode.DirectFile)
         {
             var source = Path.Combine(targetRoot, definition.Destination);
@@ -140,12 +122,7 @@ public sealed class EmulationInstaller
         else
         {
             var retroArchRoot = Path.Combine(targetRoot, "retroarch");
-            if (Directory.Exists(retroArchRoot))
-            {
-                CopyDirectory(retroArchRoot, Path.Combine(backupRoot, "retroarch"));
-                copied = true;
-            }
-
+            if (Directory.Exists(retroArchRoot)) { CopyDirectory(retroArchRoot, Path.Combine(backupRoot, "retroarch")); copied = true; }
             var nro = Path.Combine(targetRoot, "switch", "retroarch.nro");
             if (File.Exists(nro))
             {
@@ -155,7 +132,6 @@ public sealed class EmulationInstaller
                 copied = true;
             }
         }
-
         return copied ? backupRoot : "";
     }
 
@@ -194,7 +170,6 @@ public sealed class EmulationInstaller
             if (IsPreserved(relative, preserved)) continue;
             Directory.CreateDirectory(Path.Combine(destination, relative));
         }
-
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(source, file);
@@ -208,14 +183,12 @@ public sealed class EmulationInstaller
     private static bool IsPreserved(string relative, IReadOnlyList<string> preserved)
     {
         var normalized = relative.Replace('\\', '/');
-        return preserved.Any(p => normalized.Equals(p.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase)
-                                  || normalized.StartsWith(p.Replace('\\', '/') + "/", StringComparison.OrdinalIgnoreCase));
+        return preserved.Any(p => normalized.Equals(p.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase) || normalized.StartsWith(p.Replace('\\', '/') + "/", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void MergeDirectory(string source, string destination)
     {
-        foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories)) Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
             var target = Path.Combine(destination, Path.GetRelativePath(source, file));
@@ -227,8 +200,7 @@ public sealed class EmulationInstaller
     private static void CopyDirectory(string source, string destination)
     {
         Directory.CreateDirectory(destination);
-        foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories)) Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
             var target = Path.Combine(destination, Path.GetRelativePath(source, file));
@@ -246,8 +218,7 @@ public sealed class EmulationInstaller
         using var sha = SHA256.Create();
         var actual = Convert.ToHexString(await sha.ComputeHashAsync(stream, ct));
         var expected = digest[7..].Trim().ToUpperInvariant();
-        if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(actual), System.Text.Encoding.ASCII.GetBytes(expected)))
-            throw new InvalidDataException($"SHA-256 verification failed for emulation package. Expected {expected}, got {actual}.");
+        if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(actual), System.Text.Encoding.ASCII.GetBytes(expected))) throw new InvalidDataException($"SHA-256 verification failed for emulation package. Expected {expected}, got {actual}.");
     }
 
     private static string Sanitize(string value)
@@ -256,8 +227,5 @@ public sealed class EmulationInstaller
         return value.Replace('/', '_').Replace('\\', '_');
     }
 
-    private static void TryDeleteDirectory(string path)
-    {
-        try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
-    }
+    private static void TryDeleteDirectory(string path) { try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } }
 }
