@@ -10,10 +10,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: mewnx-windows-ci-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   PROJECT: MewSwitchManager.csproj
   VERSION: 0.4.0-alpha.1
@@ -42,7 +38,7 @@ jobs:
           dotnet-version: 8.0.x
       - name: Clean stale output
         shell: pwsh
-        run: Remove-Item -Recurse -Force bin,obj,dist -ErrorAction SilentlyContinue
+        run: Remove-Item -Recurse -Force -Path bin,obj,dist -ErrorAction SilentlyContinue
       - name: Restore
         run: dotnet restore $env:PROJECT
       - name: Build Release
