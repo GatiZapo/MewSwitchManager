@@ -75,7 +75,8 @@ public sealed partial class MainForm
     {
         if (_aioPackSelector.SelectedItem is not SwitchToolPack pack) return;
         var ids = pack.ToolIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (ListViewItem item in _aioToolList.Items) item.Checked = ids.Contains((string)item.Tag);
+        foreach (ListViewItem item in _aioToolList.Items)
+            if (item.Tag is string id) item.Checked = ids.Contains(id);
         _aioScanStatus.Text = $"Pack: {pack.Name} — {ids.Count} tools selected. Scan again to refresh installed status.";
         _aioPackSelector.SelectedIndex = 0;
     }
@@ -85,13 +86,21 @@ public sealed partial class MainForm
         root = "";
         var target = _content.Controls.OfType<Control>().SelectMany(Flatten).OfType<ComboBox>().FirstOrDefault(c => c.Items.Cast<object>().Any(x => x is RemovableDrive));
         if (target?.SelectedItem is RemovableDrive drive) { root = drive.Root; return true; }
-        var first = new RemovableDriveService().Scan().FirstOrDefault(); if (first is null) return false; root = first.Root; return true;
+        var first = new RemovableDriveService().Scan().FirstOrDefault();
+        if (first is null) return false;
+        root = first.Root;
+        return true;
     }
 
     private static IEnumerable<Control> Flatten(Control c)
     {
-        yield return c; foreach (Control child in c.Controls) foreach (var x in Flatten(child)) yield return x;
+        yield return c;
+        foreach (Control child in c.Controls)
+            foreach (var x in Flatten(child)) yield return x;
     }
+
+    private static SwitchToolDefinition? GetToolDefinition(ListViewItem item)
+        => item.Tag is string id ? SwitchToolCatalog.Definitions.FirstOrDefault(d => d.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) : null;
 
     private async Task ScanAioAsync()
     {
@@ -103,9 +112,13 @@ public sealed partial class MainForm
             var installed = 0;
             foreach (ListViewItem item in _aioToolList.Items)
             {
-                var status = statuses.FirstOrDefault(s => s.Definition.Id.Equals((string)item.Tag, StringComparison.OrdinalIgnoreCase)); if (status is null) continue;
+                var definition = GetToolDefinition(item);
+                if (definition is null) continue;
+                var status = statuses.FirstOrDefault(s => s.Definition.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase));
+                if (status is null) continue;
                 item.SubItems[3].Text = status.Installed ? $"✓ INSTALLED • {status.InstalledVersion} • latest {status.AvailableVersion}" : $"NOT INSTALLED • latest {status.AvailableVersion}";
-                item.Checked = status.Installed; if (status.Installed) installed++;
+                item.Checked = status.Installed;
+                if (status.Installed) installed++;
             }
             _aioScanStatus.Text = $"Scan complete — {installed}/{statuses.Count} detected. Checked items can be installed or updated."; SetStatus("●  SWITCH TOOL SCAN COMPLETE", Theme.Green);
         }
@@ -116,7 +129,7 @@ public sealed partial class MainForm
     private async Task AioInstallSelectedAsync()
     {
         if (!TryGetAioTarget(out var root)) { MessageBox.Show(this, "No se detectó la microSD/almacenamiento de la Switch.", "AIO Tools", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-        var selected = _aioToolList.Items.Cast<ListViewItem>().Where(x => x.Checked).Select(x => SwitchToolCatalog.Definitions.First(d => d.Id.Equals((string)x.Tag, StringComparison.OrdinalIgnoreCase))).ToList();
+        var selected = _aioToolList.Items.Cast<ListViewItem>().Where(x => x.Checked).Select(GetToolDefinition).Where(x => x is not null).Cast<SwitchToolDefinition>().ToList();
         if (selected.Count == 0) { MessageBox.Show(this, "Selecciona al menos una herramienta.", "AIO Tools", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         if (MessageBox.Show(this, $"Se instalarán/actualizarán {selected.Count} herramientas seleccionadas. Los archivos existentes se respaldan antes de sustituirse.\n\n¿Continuar?", "AIO Tools", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         _operationCts = new CancellationTokenSource();
