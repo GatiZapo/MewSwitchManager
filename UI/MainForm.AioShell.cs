@@ -13,7 +13,6 @@ public sealed partial class MainForm
     {
         var root = Controls.OfType<TableLayoutPanel>().FirstOrDefault();
         if (root is null) return;
-
         BuildAioActivityBar(root);
         RebrandExistingUi();
         BuildAioNavigation();
@@ -48,11 +47,9 @@ public sealed partial class MainForm
         _aioActivityState.ForeColor = Theme.Green;
         _aioActivityState.Font = Theme.Mono(7.8f, FontStyle.Bold);
 
-        if (_progress.Parent is not null)
-            _progress.Parent.Controls.Remove(_progress);
+        if (_progress.Parent is not null) _progress.Parent.Controls.Remove(_progress);
         _progress.Dock = DockStyle.Fill;
         _progress.Margin = Padding.Empty;
-
         _aioActivity.Controls.Add(_progress);
         _aioActivity.Controls.Add(_aioActivityState);
         _aioActivity.Controls.Add(_aioActivityTitle);
@@ -63,11 +60,9 @@ public sealed partial class MainForm
     {
         var nav = _sidebar.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
         if (nav is null) return;
-
         nav.Controls.Clear();
         nav.Height = 330;
         nav.Padding = new Padding(0, 14, 0, 0);
-
         AddAioNavButton(nav, "01   HOME", "Home");
         AddAioNavButton(nav, "02   INSTALL", "Install");
         AddAioNavButton(nav, "03   SWITCH TOOLS", "Switch Tools");
@@ -104,33 +99,19 @@ public sealed partial class MainForm
         var oldControls = _content.Controls.Cast<Control>().ToArray();
         _content.Controls.Clear();
         _content.Visible = false;
-
         _scrollHost.Controls.Clear();
         _scrollHost.AutoScroll = false;
         _scrollHost.Padding = new Padding(14, 0, 14, 0);
 
-        var host = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Theme.Background,
-            Margin = Padding.Empty,
-            Padding = Padding.Empty
-        };
+        var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background, Margin = Padding.Empty, Padding = Padding.Empty };
         _scrollHost.Controls.Add(host);
 
         var groups = new Dictionary<string, List<Control>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Home"] = [],
-            ["Install"] = [],
-            ["Switch Tools"] = [],
-            ["Emulation"] = [],
-            ["Recovery"] = [],
-            ["Diagnostics"] = [],
-            ["Updates"] = []
+            ["Home"] = [], ["Install"] = [], ["Switch Tools"] = [], ["Emulation"] = [],
+            ["Recovery"] = [], ["Diagnostics"] = [], ["Updates"] = []
         };
-
-        foreach (var control in oldControls)
-            groups[ClassifyAioControl(control)].Add(control);
+        foreach (var control in oldControls) groups[ClassifyAioControl(control)].Add(control);
 
         foreach (var group in groups)
         {
@@ -143,8 +124,8 @@ public sealed partial class MainForm
                 Visible = false,
                 Tag = group.Key
             };
-
-            page.Controls.Add(CreateAioPageHeading(group.Key));
+            var heading = CreateAioPageHeading(group.Key);
+            page.Controls.Add(heading);
             foreach (var control in group.Value)
             {
                 control.Dock = DockStyle.Top;
@@ -152,28 +133,23 @@ public sealed partial class MainForm
                 control.Visible = true;
                 page.Controls.Add(control);
             }
-
+            page.Controls.SetChildIndex(heading, 0);
             host.Controls.Add(page);
             _aioPages[group.Key] = page;
             EnableDarkScrollbars(page);
         }
-
         ShowAioPage("Home");
     }
 
     private static string ClassifyAioControl(Control control)
     {
         var text = CollectText(control);
-        if (text.Contains("TARGET USB", StringComparison.OrdinalIgnoreCase) ||
-            text.Contains("INSTALLATION PROGRESS", StringComparison.OrdinalIgnoreCase) ||
-            text.Contains("USB WORKFLOW", StringComparison.OrdinalIgnoreCase)) return "Install";
-        if (text.Contains("SWITCH TOOLS", StringComparison.OrdinalIgnoreCase) ||
-            text.Contains("SWITCH MANAGER", StringComparison.OrdinalIgnoreCase)) return "Switch Tools";
+        if (text.Contains("TARGET USB", StringComparison.OrdinalIgnoreCase) || text.Contains("INSTALLATION PROGRESS", StringComparison.OrdinalIgnoreCase) || text.Contains("USB WORKFLOW", StringComparison.OrdinalIgnoreCase)) return "Install";
+        if (text.Contains("SWITCH TOOLS", StringComparison.OrdinalIgnoreCase) || text.Contains("SWITCH MANAGER", StringComparison.OrdinalIgnoreCase)) return "Switch Tools";
         if (text.Contains("EMULATION CENTER", StringComparison.OrdinalIgnoreCase)) return "Emulation";
         if (text.Contains("RECOVERY CENTER", StringComparison.OrdinalIgnoreCase)) return "Recovery";
         if (text.Contains("UPDATE CENTER", StringComparison.OrdinalIgnoreCase)) return "Updates";
-        if (text.Contains("LIVE OPERATION LOG", StringComparison.OrdinalIgnoreCase)) return "Diagnostics";
-        if (text.Contains("Safety gates active", StringComparison.OrdinalIgnoreCase)) return "Diagnostics";
+        if (text.Contains("LIVE OPERATION LOG", StringComparison.OrdinalIgnoreCase) || text.Contains("Safety gates active", StringComparison.OrdinalIgnoreCase)) return "Diagnostics";
         return "Home";
     }
 
@@ -199,15 +175,7 @@ public sealed partial class MainForm
             Padding = new Padding(2, 0, 0, 8),
             Margin = new Padding(0, 0, 0, 6)
         };
-        var title = new Label
-        {
-            Dock = DockStyle.Top,
-            Height = 38,
-            Text = page.ToUpperInvariant(),
-            ForeColor = Theme.Text,
-            Font = Theme.UI(23, FontStyle.Bold),
-            AutoEllipsis = true
-        };
+        var title = new Label { Dock = DockStyle.Top, Height = 38, Text = page.ToUpperInvariant(), ForeColor = Theme.Text, Font = Theme.UI(23, FontStyle.Bold), AutoEllipsis = true };
         var subtitle = new Label
         {
             Dock = DockStyle.Fill,
@@ -235,7 +203,6 @@ public sealed partial class MainForm
     {
         if (!_aioPages.TryGetValue(page, out var target)) return;
         foreach (var item in _aioPages.Values) item.Visible = ReferenceEquals(item, target);
-
         var nav = _sidebar.Controls.OfType<FlowLayoutPanel>().FirstOrDefault();
         if (nav is not null)
         {
@@ -246,7 +213,6 @@ public sealed partial class MainForm
                 button.ForeColor = active ? Theme.Text : Theme.Muted;
             }
         }
-
         target.AutoScroll = true;
         target.VerticalScroll.Value = 0;
         target.HorizontalScroll.Value = 0;
@@ -273,12 +239,9 @@ public sealed partial class MainForm
         if (!OperatingSystem.IsWindows()) return;
         try
         {
-            if (!control.IsHandleCreated)
-                control.HandleCreated += (_, _) => EnableDarkScrollbars(control);
-            else
-                SetWindowTheme(control.Handle, "DarkMode_Explorer", null);
-            foreach (Control child in control.Controls)
-                EnableDarkScrollbars(child);
+            if (!control.IsHandleCreated) control.HandleCreated += (_, _) => EnableDarkScrollbars(control);
+            else SetWindowTheme(control.Handle, "DarkMode_Explorer", null);
+            foreach (Control child in control.Controls) EnableDarkScrollbars(child);
         }
         catch { }
     }
