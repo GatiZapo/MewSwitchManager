@@ -98,7 +98,8 @@ public sealed class SwitchToolInstaller
         await using var stream = File.OpenRead(path);
         using var sha = SHA256.Create();
         var actual = Convert.ToHexString(await sha.ComputeHashAsync(stream, ct));
-        if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(actual), System.Text.Encoding.ASCII.GetBytes(digest[7..].Trim().ToUpperInvariant())))
+        var expected = digest[7..].Trim().ToUpperInvariant();
+        if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(actual), System.Text.Encoding.ASCII.GetBytes(expected)))
             throw new InvalidDataException("SHA-256 verification failed.");
     }
 
@@ -107,7 +108,7 @@ public sealed class SwitchToolInstaller
     private static void ExtractSafe(string archivePath, string destination)
     {
         var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
-        using var archive = ArchiveFactory.Open(archivePath);
+        using var archive = ArchiveFactory.OpenArchive(archivePath);
         foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
         {
             var relative = entry.Key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
