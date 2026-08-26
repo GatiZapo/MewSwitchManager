@@ -1,6 +1,6 @@
 # MewNX 0.4 ALPHA
 
-**MewNX — Advanced Nintendo Switch Toolkit** is a Windows-first, safety-focused Nintendo Switch utility. It combines Switchroot/Linux preparation with a broader toolkit for maintaining Switch storage, CFW components, homebrew, overlays, RCM and backups.
+**MewNX — Advanced Nintendo Switch Toolkit** is a Windows-first, safety-focused Nintendo Switch utility. It combines Switchroot/Linux preparation with a broader toolkit for maintaining Switch storage, CFW components, homebrew, overlays, RCM, backups and emulation.
 
 ## What changed in 0.4
 
@@ -19,6 +19,7 @@
 - AIO tools include Checkpoint, JKSV, Sphaira, Goldleaf, NX-Shell, Daybreak, Tesla, nx-ovlloader, sys-clk, Status Monitor, MissionControl, FPSLocker, Ultrahand, TegraExplorer and Lockpick_RCM.
 - Added checkpoints and recommended-setup preparation before managed tool changes.
 - Added an RCM helper that detects the RCM USB device and explains the physical entry procedure.
+- Added a curated **Emulation Center** catalog covering tico, RetroArch, Dolphin, PPSSPP, DraStic, Azahar, Flycast, mGBA and ScummVM, with explicit automatic/manual distribution policies.
 - Linux preparation remains isolated behind the existing SafetyEngine and destructive confirmations.
 - Manager self-update remains available through UPDATE CENTER.
 
@@ -26,9 +27,18 @@
 
 - **System:** Hekate / Nyx, Atmosphère, DBI, emuMMC and configuration.
 - **Tools:** Homebrew, payloads, save management and overlays.
+- **Emulation:** tico, RetroArch, Dolphin, PPSSPP and additional curated emulators/cores. See `EMULATION_CENTER.md`.
 - **RCM:** RCM detection, payload workflow and safety guidance.
 - **Backups:** checkpoints, configuration and NAND/emuMMC safety workflows.
 - **Linux:** Switchroot preparation remains a dedicated, safety-gated workflow.
+
+## Emulation Center
+
+MewNX treats emulation as a managed software category rather than as an arbitrary download scraper. Trusted GitHub-release sources and official buildbot sources are explicitly declared; manual-only entries remain visible without being silently redistributed.
+
+**tico has been specifically investigated and is included as a first-class recommended frontend.** It is a controller-first Switch emulation frontend with its own core ecosystem. MewNX should manage the tico frontend while allowing tico to manage its own emulator cores. MewNX does not distribute ROMs, BIOS files, firmware or other copyrighted game content.
+
+The detailed source and distribution policy is documented in `EMULATION_CENTER.md`.
 
 ## RCM
 
@@ -41,6 +51,8 @@ AutoRCM is intentionally not modified automatically. It changes boot-related sto
 MewNX does not expose Windows boot/system disks as selectable destructive USB targets. The Linux workflow rejects disks that are not safe USB candidates, re-checks target identity before destructive operations, and requires explicit confirmation.
 
 Component updates are deliberately independent from the destructive Linux workflow. A failed component download or verification never starts a disk write.
+
+Emulator installation follows the same principle: download → verify → stage → validate → checkpoint/backup → merge. ROM and BIOS acquisition is explicitly outside MewNX.
 
 ## Supported host
 
@@ -61,7 +73,7 @@ Core/             workflow, safety and Switch toolkit management
 Hardware/         Windows disks, USB, storage and RCM detection
 Infrastructure/   persistence, logging, processes and GitHub releases
 Linux/            Linux image download, resume and verification
-Models/           persistent workflow/component state and configuration
+Models/           persistent workflow/component/emulator state and configuration
 UI/               responsive WinForms interface
 .github/          CI and release workflows
 ```
