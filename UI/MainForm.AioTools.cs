@@ -22,8 +22,9 @@ public sealed partial class MainForm
     private void InitializeAioTools(AppPaths paths)
     {
         _toolInstaller = new SwitchToolInstaller(paths, _logger);
-        _content.RowCount = Math.Max(_content.RowCount, 9);
+        _content.RowCount = Math.Max(_content.RowCount, 10);
         _content.Controls.Add(BuildAioToolsSection(), 0, 7);
+        _content.Controls.Add(BuildEmulationSection(), 0, 8);
     }
 
     private Control BuildAioToolsSection()
