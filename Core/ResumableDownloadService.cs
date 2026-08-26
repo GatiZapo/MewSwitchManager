@@ -75,7 +75,9 @@ public sealed class ResumableDownloadService
                 if (elapsed.TotalMilliseconds >= 250 || (total.HasValue && job.BytesReceived >= total.Value))
                 {
                     var speed = elapsed.TotalSeconds > 0 ? (job.BytesReceived - lastReportBytes) / elapsed.TotalSeconds : 0d;
-                    var eta = speed > 0 && total.HasValue ? TimeSpan.FromSeconds(Math.Max(0, (total.Value - job.BytesReceived) / speed)) : null;
+                    TimeSpan? eta = speed > 0 && total.HasValue
+                        ? TimeSpan.FromSeconds(Math.Max(0, (total.Value - job.BytesReceived) / speed))
+                        : null;
                     progress?.Report(new DownloadProgress(job.BytesReceived, job.TotalBytes, speed, eta, "Downloading", job.Name));
                     lastReportBytes = job.BytesReceived;
                     lastReportAt = stopwatch.Elapsed;
