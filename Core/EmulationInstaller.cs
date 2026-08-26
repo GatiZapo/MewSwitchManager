@@ -8,7 +8,7 @@ namespace MewSwitchManager.Core;
 
 public sealed class EmulationInstaller
 {
-    private const string RetroArchBundleUrl = "https://buildbot.libretro.com/nightly/nintendo/switch/libnx/RetroArch.7z";
+    private const string RetroArchBundleUrl = "https://buildbot.libretro.com/stable/1.22.2/nintendo/switch/libnx/RetroArch.7z";
     private readonly AppPaths _paths;
     private readonly AppLogger _logger;
     private readonly GitHubReleaseClient _releases;
@@ -102,7 +102,7 @@ public sealed class EmulationInstaller
 
     private async Task<(string Version, string Url, string? Digest, string AssetName)> ResolveSourceAsync(EmulationPackageDefinition definition, CancellationToken ct)
     {
-        if (definition.SourceKind == EmulationSourceKind.OfficialBundle) return ("nightly", RetroArchBundleUrl, null, definition.AssetName);
+        if (definition.SourceKind == EmulationSourceKind.OfficialBundle) return ("1.22.2", RetroArchBundleUrl, null, definition.AssetName);
         var release = await _releases.GetLatestAsync(definition.Repository, ct);
         var asset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, definition.AssetName, StringComparison.OrdinalIgnoreCase));
         if (asset is null) throw new InvalidOperationException($"No {definition.AssetName} asset was found in {definition.Repository} release {release.TagName}.");
