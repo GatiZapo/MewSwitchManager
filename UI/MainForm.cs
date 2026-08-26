@@ -64,7 +64,10 @@ public sealed partial class MainForm : Form
 
         BuildUi();
         InitializeManagerCenter(_paths);
+        InitializeExperience(_paths);
         InitializeUpdateCenter();
+        InitializeEmulationCenter();
+        InitializeRecoveryCenter();
         InitializeAioShell();
         ApplyVisualPolish();
         EnableDarkTitleBar();
