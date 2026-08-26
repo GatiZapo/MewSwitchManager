@@ -1,14 +1,16 @@
 using Microsoft.Win32.SafeHandles;
 using System.ComponentModel;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Hardware;
 
 /// <summary>
-/// Writes an image directly to a Windows volume handle. The writer deliberately
-/// opens the target as a raw volume and dismounts it before streaming the image.
+/// Writes verified images directly to Windows raw storage targets.
+/// Volume writing remains available for filesystem-level operations, while disk-image
+/// flashing uses the physical-disk device so partition tables contained in .raw images
+/// are written correctly.
 /// </summary>
 public sealed class NativeVolumeWriter
 {
@@ -22,6 +24,7 @@ public sealed class NativeVolumeWriter
 
     private const uint FsctlLockVolume = 0x00090018;
     private const uint FsctlDismountVolume = 0x00090020;
+    private const uint IoctlDiskUpdateProperties = 0x0007C018;
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFile(
@@ -47,7 +50,17 @@ public sealed class NativeVolumeWriter
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool FlushFileBuffers(SafeFileHandle hFile);
 
-    public async Task WriteAsync(
+    public Task WritePhysicalDiskAsync(
+        int diskNumber,
+        string sourcePath,
+        IProgress<DownloadProgress>? progress,
+        CancellationToken ct = default)
+    {
+        if (diskNumber < 0) throw new ArgumentOutOfRangeException(nameof(diskNumber));
+        return WriteRawTargetAsync($@"\\.\PhysicalDrive{diskNumber}", sourcePath, progress, ct, dismount: false);
+    }
+
+    public Task WriteAsync(
         string volumePath,
         string sourcePath,
         IProgress<DownloadProgress>? progress,
@@ -57,68 +70,52 @@ public sealed class NativeVolumeWriter
             throw new PlatformNotSupportedException("Direct volume writing requires Windows.");
         if (string.IsNullOrWhiteSpace(volumePath))
             throw new ArgumentException("A Windows volume path is required.", nameof(volumePath));
-        if (!File.Exists(sourcePath))
-            throw new FileNotFoundException("The Linux image was not found.", sourcePath);
-
-        using var handle = OpenVolumeWithFallbacks(volumePath);
-        if (handle.IsInvalid)
-            throw new Win32Exception(Marshal.GetLastWin32Error(), $"Windows could not open the target volume: {volumePath}");
-
-        LockAndDismount(handle);
-        await WriteHandleAsync(handle, sourcePath, progress, ct);
-        if (!FlushFileBuffers(handle))
-        {
-            var error = Marshal.GetLastWin32Error();
-            if (error != 0)
-                throw new Win32Exception(error, "Windows could not flush the target volume.");
-        }
+        return WriteRawTargetAsync(volumePath, sourcePath, progress, ct, dismount: true);
     }
 
-    private static SafeFileHandle OpenVolumeWithFallbacks(string path)
+    private async Task WriteRawTargetAsync(
+        string targetPath,
+        string sourcePath,
+        IProgress<DownloadProgress>? progress,
+        CancellationToken ct,
+        bool dismount)
     {
-        foreach (var candidate in GetVolumePathCandidates(path))
-        {
-            var handle = CreateFile(
-                candidate,
-                GenericRead | GenericWrite,
-                FileShareRead | FileShareWrite,
-                IntPtr.Zero,
-                OpenExisting,
-                FileFlagWriteThrough | FileFlagOverlapped,
-                IntPtr.Zero);
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Direct storage writing requires Windows.");
+        if (!File.Exists(sourcePath))
+            throw new FileNotFoundException("The image was not found.", sourcePath);
 
-            if (!handle.IsInvalid)
-                return handle;
-
-            handle.Dispose();
-        }
-
-        return CreateFile(
-            NormalizeVolumePath(path),
+        var normalized = NormalizeTargetPath(targetPath);
+        using var handle = CreateFile(
+            normalized,
             GenericRead | GenericWrite,
             FileShareRead | FileShareWrite,
             IntPtr.Zero,
             OpenExisting,
             FileFlagWriteThrough | FileFlagOverlapped,
             IntPtr.Zero);
-    }
 
-    private static IEnumerable<string> GetVolumePathCandidates(string path)
-    {
-        path = path.Trim();
-        var normalized = NormalizeVolumePath(path);
-        yield return normalized;
+        if (handle.IsInvalid)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"Windows could not open the target storage: {normalized}");
 
-        if (normalized.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase))
+        if (dismount) LockAndDismount(handle);
+        await WriteHandleAsync(handle, sourcePath, progress, ct);
+
+        if (!FlushFileBuffers(handle))
         {
-            var alternate = @"\\.\" + normalized[4..];
-            yield return alternate;
+            var error = Marshal.GetLastWin32Error();
+            if (error != 0)
+                throw new Win32Exception(error, "Windows could not flush the target storage.");
         }
 
-        if (normalized.StartsWith(@"\\.\Volume{", StringComparison.OrdinalIgnoreCase))
+        if (!dismount)
         {
-            var alternate = @"\\?\" + normalized[4..];
-            yield return alternate;
+            // Ask Windows to re-read the partition table after a raw disk image has been written.
+            if (!DeviceIoControl(handle, IoctlDiskUpdateProperties, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero))
+            {
+                var error = Marshal.GetLastWin32Error();
+                if (error != 0) throw new Win32Exception(error, "Windows could not refresh the written disk properties.");
+            }
         }
     }
 
@@ -181,7 +178,7 @@ public sealed class NativeVolumeWriter
         }
     }
 
-    private static string NormalizeVolumePath(string path)
+    private static string NormalizeTargetPath(string path)
     {
         path = path.Trim();
         if (path.StartsWith(@"\\?\Volume{", StringComparison.OrdinalIgnoreCase))
