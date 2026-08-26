@@ -1,43 +1,101 @@
 # MewNX Emulation Center
 
-MewNX now has a curated emulator/front-end catalog. The catalog deliberately separates **trusted automatic sources** from **manual-only entries** so a changing third-party download page can never silently become a trusted installation source.
+MewNX now treats emulation as a **complete installable software stack**, not a list of links. One button can install the tico frontend, the full official RetroArch Switch bundle, and every currently released Tico core used by the stock Tico systems.
 
-## Curated lineup
+## What gets installed
 
-| Entry | Systems | Distribution | Role |
-|---|---|---|---|
-| tico | Multi-system | GitHub Releases | Recommended frontend |
-| RetroArch | Multi-system / libretro | Official libretro buildbot | Recommended frontend |
-| Dolphin | GameCube / Wii | GitHub Releases | Recommended standalone emulator |
-| PPSSPP Switch Community Build | PSP | GitHub Releases | Recommended standalone emulator |
-| DraStic DS | Nintendo DS | Manual only | Advanced/experimental |
-| Azahar via tico | Nintendo 3DS | Managed by tico | Recommended through tico |
-| Flycast | Dreamcast / Naomi | Manual core | RetroArch core |
-| mGBA | GB / GBC / GBA | Manual core | RetroArch core |
-| ScummVM | Classic adventures | Manual only | Standalone emulator |
+### tico
 
-## tico
+The tico frontend is installed to `sdmc:/switch/tico/tico.nro`.
 
-tico has been explicitly investigated rather than treated as a generic homebrew app. The current project describes itself as a controller-first emulation frontend for Nintendo Switch, supporting libretro cores and custom emulator cores, automatic game organization, metadata/assets, save states and RetroAchievements. Its core architecture means MewNX should install/update the frontend and then let tico manage its own emulator cores instead of duplicating that core-management system.
+tico intentionally stopped bundling emulator cores in 0.6.0. Cores are independent packages and are normally installed from its Core Download Manager. MewNX reproduces that practical result from the PC side: it downloads the official Tico core releases and puts them in `sdmc:/tico/cores/` so the user does not have to open Tico's updater one core at a time.
 
-MewNX must never download or distribute ROMs, BIOS files, system firmware or other copyrighted game content. The user supplies legally obtained content.
+The currently managed Tico core set is:
 
-## Installation policy
+| Core | Systems |
+|---|---|
+| tico FCEUmm | NES / Famicom |
+| tico Snes9x | SNES / Super Famicom |
+| tico Mupen64Plus-Next | Nintendo 64 |
+| tico Dolphin | GameCube / Wii |
+| tico Gambatte | Game Boy / Game Boy Color |
+| tico mGBA | Game Boy Advance |
+| tico Azahar | Nintendo 3DS |
+| tico Genesis Plus GX | Master System / Game Gear / Genesis / Sega CD |
+| tico YabaSanshiro | Sega Saturn |
+| tico Flycast | Dreamcast / Naomi / Atomiswave |
+| tico FBNeo | Arcade / FinalBurn Neo |
+| tico DuckStation | PlayStation |
+| tico PPSSPP | PSP |
 
-### GitHub Releases
+This set matches the stock Tico systems/core layout documented by the community configuration example and the Tico release history. Tico cores are kept as Tico cores rather than being placed in RetroArch: their integration includes Tico-specific overlays and chain-loading behaviour.
 
-MewNX may query the official repository's latest release, select a known compatible asset, download it resumably, verify the published SHA-256 digest when available, stage it, validate the expected SD-card path and then merge it into the target.
+### RetroArch
 
-### Official buildbot
+MewNX downloads the **official Libretro Switch `RetroArch.7z` bundle** and extracts it to the SD-card root. Libretro documents this bundle as containing RetroArch, all cores and the required assets; the Switch bundle's cores live under `retroarch/cores`.
 
-RetroArch's Switch bundle is not a GitHub release asset. Its official libretro buildbot URL must therefore be represented explicitly by the installer rather than guessed from a repository release.
+The current implementation uses the official nightly bundle endpoint so the package follows the current Switch build instead of pinning MewNX to an obsolete release. The archive is validated before any SD-card merge.
 
-### Manual only
+MewNX preserves the user's:
 
-DraStic, individual RetroArch cores and other entries remain cataloged but are not automatically redistributed until their packaging/licensing/source conditions are verified. This prevents MewNX from becoming a blind scraper or redistributor.
+- `retroarch.cfg`
+- `retroarch/config/`
+- `retroarch/saves/`
+- `retroarch/states/`
+- `retroarch/playlists/`
+- `retroarch/thumbnails/`
+- `retroarch/system/` (BIOS/system files)
 
-## Safety requirements
+The rest of the official bundle can be replaced during an update so cores/assets stay synchronized with the RetroArch executable.
 
-Every automatic emulator update must use the existing MewNX download, SHA-256 verification, staging, checkpoint and rollback infrastructure. A failed download or verification must never modify the Switch SD card.
+## Why there are two systems
 
-Before a destructive or broad replacement, MewNX should create a checkpoint and preserve existing saves/configuration. Emulator installation must never touch NAND, boot0/boot1 or emuMMC partitions.
+This is deliberate:
+
+- **tico** is the polished controller-first frontend with its own Switch-specific cores and integration.
+- **RetroArch** is the universal libretro environment with a very large core catalogue and its own ecosystem.
+
+They overlap in systems, but they are not redundant from MewNX's point of view. Installing both gives the user a full frontend plus a full general-purpose libretro stack.
+
+## Dependencies, drivers and BIOS
+
+There is no generic Windows-style "emulator driver" that MewNX needs to install onto the Switch. The important runtime dependencies are the emulator/core binaries, their bundled assets/configuration, and—where required—system/BIOS data.
+
+MewNX automatically installs everything it can legally redistribute:
+
+- frontend binaries
+- emulator cores
+- RetroArch core bundle
+- RetroArch assets
+- Tico core packages
+- required SD-card directories
+- matching package versions from their official release channels
+
+MewNX **does not download BIOS dumps, ROMs, keys, console firmware or other user-owned copyrighted content**. If a core requires one of those files, a future Switch Health/Emulation diagnostic should report the exact missing file and destination rather than silently downloading it from an untrusted source.
+
+## Installer behaviour
+
+`INSTALL EVERYTHING` performs:
+
+1. SD-card detection.
+2. Free-space preflight (4 GB recommended for the full stack).
+3. Automatic checkpoint.
+4. Resumable downloads.
+5. GitHub SHA-256 verification for GitHub release assets.
+6. Archive path-traversal validation for RetroArch.
+7. Package staging.
+8. User-data preservation.
+9. Installation/merge.
+10. Expected-file validation.
+11. Automatic rollback if a component fails.
+12. Final Switch Health rescan.
+
+Individual components can also be retried from the same screen.
+
+The installer never writes NAND, boot0/boot1, emuMMC partitions or Linux partitions.
+
+## Sources investigated
+
+The source list was checked against the Tico GitHub organization and current release assets. Tico's latest frontend release is distributed as `tico.nro`; its current release notes explicitly point to independent core repositories such as Tico Dolphin and Tico DuckStation. The Tico core repositories expose release assets with SHA-256 digests, which MewNX verifies before installation.
+
+RetroArch's official Switch documentation recommends the bundle installation method and states that the bundle includes all cores and assets.
