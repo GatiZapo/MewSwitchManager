@@ -1,3 +1,5 @@
+using MewSwitchManager.Core;
+
 namespace MewSwitchManager.Models;
 
 public sealed record SwitchExperienceSummary(
