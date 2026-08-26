@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: mewnx-windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
