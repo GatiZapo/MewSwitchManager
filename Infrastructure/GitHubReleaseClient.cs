@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using MewSwitchManager.Models;
@@ -14,7 +15,7 @@ public sealed class GitHubReleaseClient
     public GitHubReleaseClient(AppLogger logger)
     {
         _http = new HttpClient();
-        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MewSwitchManager", "0.4"));
+        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MewNX", "0.4"));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
 
@@ -59,7 +60,7 @@ public sealed class GitHubReleaseClient
         if (existing > 0) request.Headers.Range = new RangeHeaderValue(existing, null);
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
 
-        if (existing > 0 && response.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable)
+        if (existing > 0 && response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
             response.Dispose();
             File.Delete(part);
@@ -67,19 +68,21 @@ public sealed class GitHubReleaseClient
             using var retry = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             retry.EnsureSuccessStatusCode();
             await CopyToPartAsync(retry, part, 0, progress, ct);
-        }
-        else
-        {
-            response.EnsureSuccessStatusCode();
-            var append = existing > 0 && response.StatusCode == System.Net.HttpStatusCode.PartialContent;
-            if (!append) existing = 0;
-            await CopyToPartAsync(response, part, existing, progress, ct);
+            return;
         }
 
-        // Deliberately keep the .part file in place. The caller verifies the
-        // complete payload before promoting it, so a bad download never
-        // replaces a previously valid cached asset and interrupted downloads
-        // remain resumable.
+        response.EnsureSuccessStatusCode();
+        var append = false;
+        if (existing > 0 && response.StatusCode == HttpStatusCode.PartialContent)
+        {
+            var range = response.Content.Headers.ContentRange;
+            append = range?.From == existing;
+        }
+
+        // Some servers ignore Range and return 200. Never append in that case;
+        // starting a fresh part is safer than silently corrupting the payload.
+        if (!append) existing = 0;
+        await CopyToPartAsync(response, part, existing, progress, ct);
     }
 
     public void PromotePart(string destination)
