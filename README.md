@@ -1,14 +1,17 @@
 # MewNX 0.4 ALPHA
 
-**MewNX — Advanced Nintendo Switch Toolkit** is a Windows-first, safety-focused Nintendo Switch AIO utility. It combines Switchroot/Linux preparation with Switch storage management, CFW components, homebrew tools, RCM helpers, checkpoints, recovery and a managed emulation stack.
+**MewNX — Advanced Nintendo Switch Toolkit** is a Windows-first, safety-focused Nintendo Switch AIO utility. It combines Switchroot/Linux preparation with Switch storage management, CFW components, homebrew tools, RCM helpers, checkpoints, recovery, emulation and controlled user-content transfer workflows.
 
 ## AIO experience
 
-- Separate **Home, Install, Switch Tools, Emulation, Recovery, Diagnostics and Updates** sections instead of one long dashboard.
+- Separate **Home, Install, Switch Tools, Emulation, Game Center, Recovery, Diagnostics and Updates** sections instead of one long dashboard.
 - The active operation stays pinned above every section, so downloads, verification, extraction and USB writes remain visible while navigating.
+- Technical state is presented with compact monospace telemetry, strong borders and MewNX neon pink/blue accents on a near-black canvas.
 - Persistent operation/error logs are written to the MewNX application data directory for post-mortem troubleshooting.
 - MewNX keeps resumable downloads and reconciles persisted workflow state when a new build starts.
 - The application, installer, taskbar/window identity and published artifacts use the MewNX brand.
+
+See `docs/MEWNX_DESIGN_SYSTEM.md` for the complete visual and UX rules.
 
 ## Linux / USB safety
 
@@ -21,18 +24,43 @@
 
 ## Switch tools
 
-- **SWITCH TOOLS** manages Hekate/Nyx, Atmosphère and DBI plus the broader AIO tool catalog.
+- **SWITCH TOOLS** manages Hekate/Nyx, Atmosphère, DBI, Awoo Installer and the broader AIO tool catalog.
 - Component downloads are resumable, verified and staged before installation.
 - Existing managed data is backed up before replacement and rollback is available when a transaction fails.
 - Recommended setup and Update Everything create checkpoints before modifying Switch storage.
 
 ## Emulation Center
 
-- One-click managed emulator setup with RetroArch and the configured Tico frontend/core stack.
-- Dependencies are treated as managed packages instead of leaving the user to hunt for separate installers.
+- One-click managed emulator setup with the current stable tico frontend and its released Tico cores, plus the official RetroArch Switch stable bundle.
+- Tico cores are treated as independent packages so one core can be updated or rolled back without replacing the frontend.
+- Current Tico releases are resolved from the official `ticohq` repositories. Source-only projects are documented but are not falsely presented as installable packages.
 - Existing RetroArch user data, saves, states, playlists, thumbnails and BIOS/system files are preserved.
 - Transactional installation and rollback prevent partially installed managed stacks.
 - MewNX never downloads game ROMs, console keys, firmware or user BIOS dumps.
+
+## Game Center
+
+Game Center is a **content-management and staging layer**, not a game-piracy catalogue.
+
+- Index and verify files supplied by the user.
+- Calculate SHA-256 before and after staging.
+- Check destination space before copying.
+- Stage content atomically into `MewNX/Incoming` on the selected SD card.
+- Keep the source file untouched.
+- Provide a clean hand-off point for supported installers such as DBI/Awoo.
+- Preserve a clear distinction between MewNX-managed software and user-provided content.
+
+MewNX does not ship warez-site lists, scrape unauthorised game-dump pages or automatically download copyrighted game dumps from unofficial sources. Legitimate, user-controlled servers and official homebrew sources remain compatible with the architecture.
+
+## Architecture principles
+
+- **Lazy services:** expensive centers and hardware/network work should be created on first use rather than during application startup.
+- **Shared infrastructure:** release metadata, HTTP, logging, checkpoints and dependency resolution are reused instead of recreated per page.
+- **Transactional deployment:** resolve → resumable fetch → verify → stage → validate → deploy → checkpoint commit.
+- **Safety Engine:** backend state is authoritative; the UI never shows a green state before the corresponding check succeeds.
+- **Dependency graph:** components declare dependencies as data and are installed in dependency order.
+
+See `docs/MEWNX_AIO_ARCHITECTURE.md` for the complete architecture and source policy.
 
 ## What changed in 0.4
 
@@ -43,12 +71,13 @@
 - Official GitHub release channels are queried directly.
 - Component archives are staged before installation and protected against archive path traversal.
 - GitHub release SHA-256 asset digests are verified when published.
-- Existing Hekate, Atmosphère and DBI data is backed up before an update.
+- Existing component data is backed up before an update.
 - Component merges preserve existing configuration instead of deleting the component directory first.
 - Failed component updates attempt automatic rollback from the pre-update backup.
-- DBI is deliberately pinned to the official English release channel instead of blindly selecting the newest Russian-only release.
-- AIO tools include Checkpoint, JKSV, Sphaira, Goldleaf, NX-Shell, Daybreak, Tesla, nx-ovlloader, sys-clk, Status Monitor, MissionControl, FPSLocker, Ultrahand, TegraExplorer and Lockpick_RCM.
+- AIO tools include Checkpoint, JKSV, Sphaira, Goldleaf, NX-Shell, Daybreak, Tesla, nx-ovlloader, sys-clk, Status Monitor, MissionControl, FPSLocker, Ultrahand, TegraExplorer, Lockpick_RCM, DBI and Awoo Installer.
 - Added checkpoints and recommended-setup preparation before managed tool changes.
+- Added Game Center preflight/staging with post-copy SHA-256 verification.
+- Refined the visual system toward a technical terminal aesthetic without copying third-party branding or layouts.
 
 ## Logs
 
