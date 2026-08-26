@@ -69,9 +69,6 @@ public sealed partial class MainForm
     private void ApplyResponsiveLayout()
     {
         if (WindowState == FormWindowState.Minimized) return;
-        // MewNX now uses a persistent AIO sidebar. Hiding it at arbitrary desktop widths
-        // made the navigation disappear and the old compact strip overlap the operation bar.
-        // The minimum form width is deliberately sized to keep the sidebar usable.
         _sidebar.Visible = true;
         _compactNav.Visible = false;
         if (ParentLayout(out var root))
@@ -123,6 +120,8 @@ public sealed partial class MainForm
         if (InvokeRequired) { BeginInvoke(() => SetStatus(text, color)); return; }
         _status.Text = text;
         _status.ForeColor = color;
+        _aioActivityState.Text = text.Replace("●", "").Trim();
+        _aioActivityState.ForeColor = color;
     }
 
     private void InvokeIfNeeded(Action action)
