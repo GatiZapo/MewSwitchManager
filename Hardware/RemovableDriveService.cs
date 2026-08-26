@@ -14,7 +14,8 @@ public sealed class RemovableDriveService
         {
             try
             {
-                if (!drive.IsReady || drive.DriveType != DriveType.Removable) continue;
+                if (!drive.IsReady) continue;
+                if (drive.DriveType != DriveType.Removable && !LooksLikeSwitchStorage(drive.RootDirectory.FullName)) continue;
                 result.Add(new RemovableDrive(
                     drive.RootDirectory.FullName,
                     drive.VolumeLabel,
@@ -27,5 +28,17 @@ public sealed class RemovableDriveService
             }
         }
         return result;
+    }
+
+    private static bool LooksLikeSwitchStorage(string root)
+    {
+        try
+        {
+            return Directory.Exists(Path.Combine(root, "atmosphere"))
+                || Directory.Exists(Path.Combine(root, "bootloader"))
+                || Directory.Exists(Path.Combine(root, "switch"))
+                || File.Exists(Path.Combine(root, "hbmenu.nro"));
+        }
+        catch { return false; }
     }
 }
