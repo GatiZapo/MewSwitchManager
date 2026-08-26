@@ -1,5 +1,3 @@
-using System.Management;
-
 namespace MewSwitchManager.Hardware;
 
 public sealed record RemovableDrive(string Root, string VolumeLabel, long FreeBytes, long TotalBytes)
@@ -17,7 +15,6 @@ public sealed class RemovableDriveService
             try
             {
                 if (!drive.IsReady || drive.DriveType != DriveType.Removable) continue;
-                if (string.IsNullOrWhiteSpace(drive.RootDirectory.FullName)) continue;
                 result.Add(new RemovableDrive(
                     drive.RootDirectory.FullName,
                     drive.VolumeLabel,
