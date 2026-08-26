@@ -1,3 +1,4 @@
+using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Core;
@@ -34,10 +35,11 @@ public sealed class SwitchCheckpoint
 
     private static void CopyIfPresent(string root, string relative, string destinationRoot)
     {
-        var source = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+        var normalized = relative.Replace('/', Path.DirectorySeparatorChar);
+        var source = Path.Combine(root, normalized);
         if (File.Exists(source))
         {
-            var target = Path.Combine(destinationRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+            var target = Path.Combine(destinationRoot, normalized);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(source, target, true);
             return;
@@ -45,7 +47,7 @@ public sealed class SwitchCheckpoint
         if (!Directory.Exists(source)) return;
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
-            var target = Path.Combine(destinationRoot, relative.Replace('/', Path.DirectorySeparatorChar), Path.GetRelativePath(source, file));
+            var target = Path.Combine(destinationRoot, normalized, Path.GetRelativePath(source, file));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, true);
         }
