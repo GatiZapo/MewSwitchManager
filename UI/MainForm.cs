@@ -47,7 +47,7 @@ public sealed partial class MainForm : Form
         _config = config;
         _updateService = new UpdateService(logger);
 
-        Text = "MewNX";
+        Text = "MewNX — Advanced Nintendo Switch Toolkit";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(900, 650);
         Size = new Size(1420, 900);
@@ -59,16 +59,13 @@ public sealed partial class MainForm : Form
         KeyPreview = true;
         DoubleBuffered = true;
 
-        // ApplicationIcon controls the EXE icon, but WinForms does not automatically use
-        // that icon for the window/taskbar in every single-file publish configuration.
-        // Extract the embedded executable icon so the running MewNX window and taskbar
-        // entry use the same branding.
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch (Exception ex) { logger.Warn($"Could not load MewNX window icon: {ex.Message}"); }
 
         BuildUi();
         InitializeManagerCenter(_paths);
         InitializeUpdateCenter();
+        InitializeAioShell();
         ApplyVisualPolish();
         EnableDarkTitleBar();
 
