@@ -63,7 +63,7 @@ public sealed class SystemDiagnostics
             ? new("hekate", "Hekate / SD", DiagnosticSeverity.Pass, "Hekate configuration detected on a mounted volume.")
             : new("hekate", "Hekate / SD", DiagnosticSeverity.Warning, "Hekate configuration was not detected on mounted volumes."));
 
-        var imagePath = new Linux.LinuxImageService(new HttpClient(), _logger, _config).FinalPath(_paths.CacheDirectory);
+        var imagePath = new MewSwitchManager.Linux.LinuxImageService(new HttpClient(), _logger, _config).FinalPath(_paths.CacheDirectory);
         if (!File.Exists(imagePath)) checks.Add(new("linux-image", "Linux image", DiagnosticSeverity.Warning, "Linux image is not present in the local cache."));
         else if (new FileInfo(imagePath).Length == 0) checks.Add(new("linux-image", "Linux image", DiagnosticSeverity.Fail, "Linux image exists but is empty."));
         else checks.Add(new("linux-image", "Linux image", DiagnosticSeverity.Pass, $"Cached image: {new FileInfo(imagePath).Length / 1024d / 1024d:F1} MiB."));
