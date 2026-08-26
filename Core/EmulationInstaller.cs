@@ -33,6 +33,7 @@ public sealed class EmulationInstaller
             try { results.Add(await InstallOrUpdateAsync(definition, targetRoot, progress, ct)); }
             catch (Exception ex) { _logger.Warn($"Emulation component {definition.Name} was skipped: {ex.Message}"); }
         }
+        CreateTicoLibraryDirectories(targetRoot);
         return results;
     }
 
@@ -102,6 +103,12 @@ public sealed class EmulationInstaller
         var drive = new DriveInfo(root);
         if (drive.AvailableFreeSpace < RecommendedFreeBytes)
             throw new IOException($"The Switch SD card needs at least 4 GB of free space for the full emulation stack. Available: {drive.AvailableFreeSpace / 1024d / 1024d / 1024d:F1} GB.");
+    }
+
+    private static void CreateTicoLibraryDirectories(string targetRoot)
+    {
+        var names = new[] { "nes", "snes", "n64", "gc", "wii", "gb", "gbc", "gba", "3ds", "master-system", "game-gear", "genesis", "sega-cd", "saturn", "dc", "naomi", "atomiswave", "fbneo", "psx", "psp" };
+        foreach (var name in names) Directory.CreateDirectory(Path.Combine(targetRoot, "tico", "roms", name));
     }
 
     private static string BackupDestination(string targetRoot, EmulationPackageDefinition definition)
