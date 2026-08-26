@@ -11,6 +11,12 @@ public sealed partial class MainForm
     private readonly Button _aioToolsButton = new();
     private readonly Button _aioAllButton = new();
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        if (_toolInstaller is null) InitializeAioTools(AppPaths.Create(_config));
+    }
+
     private void InitializeAioTools(AppPaths paths)
     {
         _toolInstaller = new SwitchToolInstaller(paths, _logger);
@@ -41,8 +47,7 @@ public sealed partial class MainForm
         root = "";
         var target = _content.Controls.OfType<Control>().SelectMany(Flatten).OfType<ComboBox>().FirstOrDefault(c => c.Items.Cast<object>().Any(x => x is RemovableDrive));
         if (target?.SelectedItem is RemovableDrive drive) { root = drive.Root; return true; }
-        var drives = new RemovableDriveService().Scan();
-        var first = drives.FirstOrDefault();
+        var first = new RemovableDriveService().Scan().FirstOrDefault();
         if (first is null) return false;
         root = first.Root; return true;
     }
@@ -58,13 +63,12 @@ public sealed partial class MainForm
         if (!TryGetAioTarget(out var root)) { MessageBox.Show(this, "No se detectó la microSD/almacenamiento de la Switch.", "AIO Tools", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
         using var picker = new ToolPickerDialog(SwitchToolCatalog.Definitions);
         if (picker.ShowDialog(this) != DialogResult.OK || picker.Selected is null) return;
-        var tool = picker.Selected;
         _operationCts = new CancellationTokenSource();
         try
         {
             _aioToolsButton.Enabled = false;
             SetStatus("●  AIO TOOL UPDATE", Theme.Pink);
-            var result = await _toolInstaller.InstallOrUpdateAsync(tool, root, new Progress<DownloadProgress>(RenderDownloadProgress), _operationCts.Token);
+            var result = await _toolInstaller.InstallOrUpdateAsync(picker.Selected, root, new Progress<DownloadProgress>(RenderDownloadProgress), _operationCts.Token);
             SetStatus("●  TOOL UPDATED", Theme.Green);
             MessageBox.Show(this, result.Message + "\n\nBackup: " + (string.IsNullOrWhiteSpace(result.BackupPath) ? "none needed" : result.BackupPath), "AIO Tools", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -75,7 +79,7 @@ public sealed partial class MainForm
     private async Task AioInstallAllAsync()
     {
         if (!TryGetAioTarget(out var root)) { MessageBox.Show(this, "No se detectó la microSD/almacenamiento de la Switch.", "AIO Tools", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-        var confirm = MessageBox.Show(this, "UPDATE ALL SAFE actualizará únicamente los 9 elementos del catálogo de herramientas. No toca NAND, emuMMC, boot0/boot1 ni Linux.\n\n¿Continuar?", "UPDATE ALL SAFE", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+        var confirm = MessageBox.Show(this, "UPDATE ALL SAFE actualizará únicamente el catálogo de herramientas. No toca NAND, emuMMC, boot0/boot1 ni Linux.\n\n¿Continuar?", "UPDATE ALL SAFE", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
         if (confirm != DialogResult.Yes) return;
         _operationCts = new CancellationTokenSource();
         try
@@ -84,7 +88,7 @@ public sealed partial class MainForm
             SetStatus("●  UPDATING ALL SAFE TOOLS", Theme.Pink);
             var results = await _toolInstaller.InstallAllSafeAsync(root, SwitchToolCatalog.Definitions, new Progress<DownloadProgress>(RenderDownloadProgress), _operationCts.Token);
             SetStatus($"●  SAFE UPDATE {results.Count}/{SwitchToolCatalog.Definitions.Count}", Theme.Green);
-            MessageBox.Show(this, $"UPDATE ALL SAFE terminado.\n\nActualizados correctamente: {results.Count}/{SwitchToolCatalog.Definitions.Count}.\n\nLos fallos se han dejado registrados en el log y no detienen los demás componentes.", "AIO Tools", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, $"UPDATE ALL SAFE terminado.\n\nActualizados correctamente: {results.Count}/{SwitchToolCatalog.Definitions.Count}.\n\nLos fallos se registran en el log y no detienen los demás componentes.", "AIO Tools", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (OperationCanceledException) { SetStatus("●  SAFE UPDATE CANCELLED", Theme.Amber); }
         finally { _aioAllButton.Enabled = true; _operationCts.Dispose(); _operationCts = null; }
