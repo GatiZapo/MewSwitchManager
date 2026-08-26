@@ -1,51 +1,51 @@
-using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Infrastructure;
 
+public sealed record GitHubAsset(string Name, string Url, long Size, string? Digest);
+public sealed record GitHubRelease(string TagName, string Name, string HtmlUrl, bool Prerelease, IReadOnlyList<GitHubAsset> Assets);
+
 public sealed class GitHubReleaseClient
 {
     private readonly HttpClient _http;
-    private readonly AppLogger _logger;
 
     public GitHubReleaseClient(AppLogger logger)
     {
-        _logger = logger;
-        _http = new HttpClient { BaseAddress = new Uri("https://api.github.com/") };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MewSwitchManager/0.4");
+        _http = new HttpClient();
+        _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MewSwitchManager", "0.4"));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
 
-    public async Task<GitHubRelease> GetLatestAsync(string repository, CancellationToken ct = default)
-    {
-        var response = await _http.GetAsync($"repos/{repository}/releases/latest", ct);
-        response.EnsureSuccessStatusCode();
-        return await ParseReleaseAsync(response, ct);
-    }
+    public Task<GitHubRelease> GetLatestAsync(string repository, CancellationToken ct = default)
+        => GetAsync($"https://api.github.com/repos/{repository}/releases/latest", ct);
 
-    public async Task<GitHubRelease> GetTagAsync(string repository, string tag, CancellationToken ct = default)
-    {
-        var response = await _http.GetAsync($"repos/{repository}/releases/tags/{Uri.EscapeDataString(tag)}", ct);
-        response.EnsureSuccessStatusCode();
-        return await ParseReleaseAsync(response, ct);
-    }
+    public Task<GitHubRelease> GetTagAsync(string repository, string tag, CancellationToken ct = default)
+        => GetAsync($"https://api.github.com/repos/{repository}/releases/tags/{Uri.EscapeDataString(tag)}", ct);
 
-    private static async Task<GitHubRelease> ParseReleaseAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task<GitHubRelease> GetAsync(string uri, CancellationToken ct)
     {
+        using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-        var root = document.RootElement;
-        var assets = root.GetProperty("assets").EnumerateArray().Select(x => new GitHubAsset(
-            x.GetProperty("name").GetString() ?? "",
-            x.GetProperty("browser_download_url").GetString() ?? "",
-            x.TryGetProperty("size", out var size) ? size.GetInt64() : 0,
-            x.TryGetProperty("digest", out var digest) ? digest.GetString() : null)).ToArray();
+        using var json = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        var root = json.RootElement;
+        var assets = root.TryGetProperty("assets", out var rawAssets)
+            ? rawAssets.EnumerateArray()
+                .Select(a => new GitHubAsset(
+                    a.GetProperty("name").GetString() ?? "",
+                    a.GetProperty("browser_download_url").GetString() ?? "",
+                    a.GetProperty("size").GetInt64(),
+                    a.TryGetProperty("digest", out var d) ? d.GetString() : null))
+                .Where(a => !string.IsNullOrWhiteSpace(a.Url))
+                .ToArray()
+            : [];
         return new GitHubRelease(
             root.GetProperty("tag_name").GetString() ?? "",
             root.GetProperty("name").GetString() ?? "",
             root.GetProperty("html_url").GetString() ?? "",
+            root.TryGetProperty("prerelease", out var pre) && pre.GetBoolean(),
             assets);
     }
 
@@ -53,12 +53,15 @@ public sealed class GitHubReleaseClient
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         var part = destination + ".part";
-        long existing = File.Exists(part) ? new FileInfo(part).Length : 0;
+        var existing = File.Exists(part) ? new FileInfo(part).Length : 0L;
+
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         if (existing > 0) request.Headers.Range = new RangeHeaderValue(existing, null);
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        if (existing > 0 && response.StatusCode == HttpStatusCode.OK)
+
+        if (existing > 0 && response.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable)
         {
+            response.Dispose();
             File.Delete(part);
             existing = 0;
             using var retry = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -68,7 +71,7 @@ public sealed class GitHubReleaseClient
         else
         {
             response.EnsureSuccessStatusCode();
-            var append = existing > 0 && response.StatusCode == HttpStatusCode.PartialContent;
+            var append = existing > 0 && response.StatusCode == System.Net.HttpStatusCode.PartialContent;
             if (!append) existing = 0;
             await CopyToPartAsync(response, part, existing, progress, ct);
         }
@@ -90,8 +93,9 @@ public sealed class GitHubReleaseClient
             if (read == 0) break;
             await output.WriteAsync(buffer.AsMemory(0, read), ct);
             received += read;
-            var elapsed = Math.Max((DateTime.UtcNow - started).TotalSeconds, 0.001);
-            progress?.Report(new DownloadProgress(received, total, received / elapsed));
+            var elapsed = Math.Max(0.001, (DateTime.UtcNow - started).TotalSeconds);
+            progress?.Report(new DownloadProgress(received, total, received / elapsed, null, "DOWNLOADING COMPONENT", null));
         }
+        await output.FlushAsync(ct);
     }
 }
