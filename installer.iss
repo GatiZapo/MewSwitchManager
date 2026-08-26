@@ -1,4 +1,3 @@
-# MewNX installer
 #define AppName "MewNX"
 #define AppVersion "0.4.0"
 #define AppPublisher "MewNX Project"
