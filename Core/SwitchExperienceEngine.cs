@@ -36,12 +36,27 @@ public sealed class SwitchExperienceEngine
             if (status.UpdateAvailable) warnings.Add($"{status.Definition.Name}: update available ({status.AvailableVersion})");
         }
 
+        var hasHekate = File.Exists(Path.Combine(targetRoot, "bootloader", "update.bin"));
+        var hasAtmosphere = File.Exists(Path.Combine(targetRoot, "atmosphere", "package3"));
+        var hasNintendo = Directory.Exists(Path.Combine(targetRoot, "Nintendo"));
+        var hasEmummc = Directory.Exists(Path.Combine(targetRoot, "emuMMC"));
+        var hasConfig = File.Exists(Path.Combine(targetRoot, "bootloader", "hekate_ipl.ini"));
+        var looksLikeSwitchSd = hasHekate || hasAtmosphere || hasNintendo || hasEmummc;
+
+        var rootPath = Path.GetFullPath(targetRoot);
+        var drive = new DriveInfo(Path.GetPathRoot(rootPath)!);
         var report = new SwitchSdReport(
-            File.Exists(Path.Combine(targetRoot, "bootloader", "update.bin")),
-            File.Exists(Path.Combine(targetRoot, "atmosphere", "package3")),
-            Directory.Exists(Path.Combine(targetRoot, "Nintendo")),
-            File.Exists(Path.Combine(targetRoot, "emuMMC", "emummc.ini")),
-            Array.Empty<string>());
+            Root: rootPath,
+            TotalBytes: drive.TotalSize,
+            FreeBytes: drive.AvailableFreeSpace,
+            LooksLikeSwitchSd: looksLikeSwitchSd,
+            HasHekate: hasHekate,
+            HasAtmosphere: hasAtmosphere,
+            HasNintendo: hasNintendo,
+            HasEmummc: hasEmummc,
+            HasBootloaderConfig: hasConfig,
+            Warnings: Array.Empty<string>());
+
         var recommendations = _checkpoints.Recommend(report);
         var ready = !warnings.Any(x => x.Contains("not detected", StringComparison.OrdinalIgnoreCase));
         var summary = ready ? "Switch storage looks ready for managed updates." : "Review the warnings before applying managed updates.";
