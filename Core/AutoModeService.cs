@@ -1,3 +1,4 @@
+using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Core;
@@ -19,10 +20,7 @@ public sealed class AutoModeService
 
     public AutoModeService(AppLogger logger) => _logger = logger;
 
-    public async Task<AutoRunResult> RunUntilUserGateAsync(
-        InstallationEngine engine,
-        IProgress<DownloadProgress>? progress,
-        CancellationToken ct = default)
+    public async Task<AutoRunResult> RunUntilUserGateAsync(InstallationEngine engine, IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
         var plan = _planner.BuildOrRefresh(engine.State);
         engine.SaveAutoPlan(plan);
@@ -63,9 +61,7 @@ public sealed class AutoModeService
             }
 
             gate.State = AutoStepState.WaitingForUser;
-            gate.Message = gate.RequiresConfirmation
-                ? "Auto Mode paused at a user-controlled safety gate."
-                : "Auto Mode is waiting for the next hardware/user checkpoint.";
+            gate.Message = gate.RequiresConfirmation ? "Auto Mode paused at a user-controlled safety gate." : "Auto Mode is waiting for the next hardware/user checkpoint.";
             plan.CurrentStepId = gate.Id;
             engine.SaveAutoPlan(plan);
             return new(AutoRunOutcome.WaitingForUser, plan, $"Auto Mode paused at: {gate.Title}");
