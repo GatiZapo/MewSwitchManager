@@ -8,8 +8,8 @@ public sealed class StatusCard : Control
 
     public StatusCard()
     {
-        Height = 82;
-        MinimumSize = new Size(150, 76);
+        Height = 88;
+        MinimumSize = new Size(150, 82);
         DoubleBuffered = true;
         AccessibleRole = AccessibleRole.Grouping;
         Margin = new Padding(0);
@@ -29,17 +29,16 @@ public sealed class StatusCard : Control
         using var h = new SolidBrush(Theme.Muted);
         using var v = new SolidBrush(Theme.Text);
         using var dot = new SolidBrush(Accent);
-        using var headingFont = Theme.Mono(7.2f, FontStyle.Bold);
-        using var valueFont = Theme.UI(10.2f, FontStyle.Bold);
+        using var headingFont = Theme.Mono(7.5f, FontStyle.Bold);
+        using var valueFont = Theme.UI(10.5f, FontStyle.Bold);
 
         g.DrawString(Heading.ToUpperInvariant(), headingFont, h, 15, 12);
-        g.FillEllipse(dot, 16, 43, 7, 7);
+        g.FillEllipse(dot, 16, 45, 7, 7);
 
         var available = Math.Max(70, Width - 42);
-        var text = ValueText;
-        while (text.Length > 4 && g.MeasureString(text, valueFont).Width > available)
-            text = text[..^1];
+        var text = ValueText ?? "—";
+        while (text.Length > 4 && g.MeasureString(text, valueFont).Width > available) text = text[..^1];
         if (!string.Equals(text, ValueText, StringComparison.Ordinal)) text += "…";
-        g.DrawString(text, valueFont, v, 30, 35);
+        g.DrawString(text, valueFont, v, 30, 37);
     }
 }
