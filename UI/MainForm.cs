@@ -68,6 +68,7 @@ public sealed partial class MainForm : Form
         InitializeUpdateCenter();
         InitializeEmulationCenter();
         InitializeRecoveryCenter();
+        InitializeDiagnostics();
         InitializeAioShell();
         ApplyVisualPolish();
         EnableDarkTitleBar();
