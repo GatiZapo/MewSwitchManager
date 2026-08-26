@@ -15,6 +15,8 @@ public sealed partial class MainForm
     {
         base.OnLoad(e);
         if (_toolInstaller is null) InitializeAioTools(AppPaths.Create(_config));
+        InitializeExperience(AppPaths.Create(_config));
+        Shown += async (_, _) => await RefreshExperienceAsync();
     }
 
     private void InitializeAioTools(AppPaths paths)
@@ -30,7 +32,7 @@ public sealed partial class MainForm
         card.Height = 150;
         card.Padding = new Padding(16);
         var title = new Label { Dock = DockStyle.Top, Height = 28, Text = "AIO TOOLS", ForeColor = Theme.Text, Font = Theme.UI(12, FontStyle.Bold) };
-        var info = new Label { Dock = DockStyle.Top, Height = 38, Text = "Payloads • Homebrew • Overlays\nTegraExplorer / Lockpick_RCM / Sphaira / JKSV / Goldleaf / Tesla / sys-clk / Status Monitor", ForeColor = Theme.Muted, Font = Theme.Mono(7.2f) };
+        var info = new Label { Dock = DockStyle.Top, Height = 38, Text = "Payloads • Homebrew • Overlays\nTegraExplorer / Lockpick_RCM / Sphaira / JKSV / Checkpoint / NX-Shell / Tesla / sys-clk / MissionControl / FPSLocker / Ultrahand", ForeColor = Theme.Muted, Font = Theme.Mono(7.0f) };
         var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, BackColor = Theme.Surface };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         StyleButton(_aioToolsButton, "INSTALL / UPDATE TOOL", Theme.Blue, 180);
