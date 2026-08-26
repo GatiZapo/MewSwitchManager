@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
@@ -34,21 +33,27 @@ public sealed class UsbStorageService(
             throw new InvalidOperationException($"The selected USB is too small. It has about {target.SizeGb:0.0} GB, while the Linux image needs {rawSize / 1_000_000_000d:0.00} GB.");
         if (!int.TryParse(target.Number, out var diskNumber)) throw new InvalidOperationException("Invalid target disk number.");
 
+        // ubuntu.raw is a disk image. Do not create a Windows filesystem partition and then
+        // try to open its volume GUID: immediately after DiskPart creates a RAW partition the
+        // volume can be unavailable, which caused the observed target-volume error. A disk
+        // image must be written to the physical USB disk itself.
         progress?.Report(new DownloadProgress(0, 1, 0, null, "VERIFYING TARGET", "Re-checking USB identity before the destructive operation."));
-        safety.DemandStableIdentity(target, await _disks.GetDiskAsync(target.Number, ct));
-        progress?.Report(new DownloadProgress(0, 1, 0, null, "PARTITIONING USB", "Creating the target partition. The USB is being modified now."));
-        await RepartitionTargetAsync(diskNumber, ct);
+        var before = await _disks.GetDiskAsync(target.Number, ct);
+        safety.DemandStableIdentity(target, before);
 
-        var partition = await GetFirstPartitionVolumeAsync(diskNumber, ct);
-        ValidatePartition(partition, rawSize);
-        await RemoveDriveLetterAsync(diskNumber, partition!.Value.PartitionNumber, partition.Value.DriveLetter, ct);
-        safety.DemandStableIdentity(target, await _disks.GetDiskAsync(target.Number, ct));
+        progress?.Report(new DownloadProgress(0, 1, 0, null, "PREPARING USB", "Cleaning the selected USB disk before writing the raw image."));
+        await CleanTargetAsync(diskNumber, ct);
+        await RescanStorageAsync(ct);
 
-        logger.Info($"Flashing ubuntu.raw ({rawSize:N0} bytes) to USB partition {partition.Value.PartitionNumber} at {partition.Value.VolumePath}.");
-        progress?.Report(new DownloadProgress(0, rawSize, 0, null, "FLASHING USB", "Writing Linux image to USB..."));
-        await _writer.WriteAsync(partition.Value.VolumePath!, rawPath, progress, ct);
-        logger.Info("USB Linux image write completed successfully.");
-        progress?.Report(new DownloadProgress(1, 1, 0, TimeSpan.Zero, "USB FLASH COMPLETE", "Linux image written successfully."));
+        var afterClean = await _disks.GetDiskAsync(target.Number, ct);
+        safety.DemandStableIdentity(target, afterClean);
+
+        logger.Info($"Flashing ubuntu.raw ({rawSize:N0} bytes) directly to PhysicalDrive{diskNumber}.");
+        progress?.Report(new DownloadProgress(0, rawSize, 0, null, "FLASHING USB", "Writing the verified Linux disk image to the USB..."));
+        await _writer.WritePhysicalDiskAsync(diskNumber, rawPath, progress, ct);
+        await RescanStorageAsync(ct);
+        logger.Info("USB Linux disk image write completed successfully.");
+        progress?.Report(new DownloadProgress(rawSize, rawSize, 0, TimeSpan.Zero, "USB FLASH COMPLETE", "Linux image written successfully."));
     }
 
     private void ValidateTarget(DiskInfo target, string archivePath)
@@ -58,60 +63,31 @@ public sealed class UsbStorageService(
         if (!File.Exists(archivePath)) throw new FileNotFoundException("Linux image archive not found.", archivePath);
     }
 
-    private static void ValidatePartition((int PartitionNumber, long Size, string? VolumePath, string? DriveLetter)? partition, long rawSize)
+    private async Task CleanTargetAsync(int diskNumber, CancellationToken ct)
     {
-        if (partition is null || string.IsNullOrWhiteSpace(partition.Value.VolumePath))
-            throw new InvalidOperationException("Windows created the USB partition but did not expose a writable volume path. The image was not written.");
-        if (partition.Value.Size < rawSize)
-            throw new InvalidOperationException($"The USB partition ({partition.Value.Size:N0} bytes) is smaller than the Linux image ({rawSize:N0} bytes).");
-    }
-
-    private async Task RepartitionTargetAsync(int diskNumber, CancellationToken ct)
-    {
-        var script = $"select disk {diskNumber}\r\nclean\r\ncreate partition primary\r\nexit\r\n";
-        var temp = Path.Combine(Path.GetTempPath(), $"mewswitch-diskpart-{Guid.NewGuid():N}.txt");
+        var script = $"select disk {diskNumber}\r\nattributes disk clear readonly\r\nclean\r\nexit\r\n";
+        var temp = Path.Combine(Path.GetTempPath(), $"mewnx-diskpart-{Guid.NewGuid():N}.txt");
         await File.WriteAllTextAsync(temp, script, ct);
         try
         {
             var result = await runner.RunAsync("diskpart.exe", $"/s {Quote(temp)}", ct);
-            if (result.ExitCode != 0) throw new InvalidOperationException($"Disk partitioning failed: {result.StdOut}\n{result.StdErr}");
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException($"USB preparation failed while cleaning Disk {diskNumber}: {result.StdOut}\n{result.StdErr}");
+            logger.Info($"Disk {diskNumber} cleaned successfully and is ready for raw-image writing.");
         }
         finally { TryDelete(temp); }
-        logger.Info($"Disk {diskNumber} repartitioned with one primary partition.");
     }
 
-    private async Task<(int PartitionNumber, long Size, string? VolumePath, string? DriveLetter)?> GetFirstPartitionVolumeAsync(int diskNumber, CancellationToken ct)
+    private async Task RescanStorageAsync(CancellationToken ct)
     {
-        const string commandTemplate = @"
-$p = Get-Partition -DiskNumber {0} | Sort-Object PartitionNumber | Select-Object -First 1
-if ($null -eq $p) {{ exit 2 }}
-$v = Get-Volume -Partition $p -ErrorAction SilentlyContinue
-if ($null -eq $v) {{
-    $used = @(Get-Volume | Where-Object {{ $null -ne $_.DriveLetter }} | ForEach-Object {{ [string]$_.DriveLetter }})
-    $candidate = ('R','S','T','U','V','W','X','Y','Z') | Where-Object {{ $used -notcontains $_ }} | Select-Object -First 1
-    if ($candidate) {{
-        Set-Partition -DiskNumber {0} -PartitionNumber $p.PartitionNumber -NewDriveLetter $candidate -ErrorAction Stop
-        $v = Get-Volume -DriveLetter $candidate -ErrorAction Stop
-    }}
-}}
-[pscustomobject]@{{
-    PartitionNumber = [int]$p.PartitionNumber
-    Size = [int64]$p.Size
-    VolumePath = if ($v) {{ [string]$v.Path }} else {{ '' }}
-    DriveLetter = if ($v -and $v.DriveLetter) {{ [string]$v.DriveLetter }} else {{ '' }}
-}} | ConvertTo-Json -Compress";
-        var result = await runner.RunAsync("powershell.exe", $"-NoProfile -Command {Quote(string.Format(commandTemplate, diskNumber))}", ct);
-        if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut)) return null;
-        using var document = JsonDocument.Parse(result.StdOut);
-        var root = document.RootElement;
-        return (root.GetProperty("PartitionNumber").GetInt32(), root.GetProperty("Size").GetInt64(), root.TryGetProperty("VolumePath", out var path) ? path.GetString() : null, root.TryGetProperty("DriveLetter", out var drive) ? drive.GetString() : null);
-    }
-
-    private async Task RemoveDriveLetterAsync(int diskNumber, int partitionNumber, string? driveLetter, CancellationToken ct)
-    {
-        var command = $"$p=Get-Partition -DiskNumber {diskNumber} -PartitionNumber {partitionNumber}; if($p.DriveLetter){{Remove-PartitionAccessPath -DiskNumber {diskNumber} -PartitionNumber {partitionNumber} -AccessPath ($p.DriveLetter+':\\') -ErrorAction SilentlyContinue}}";
-        var result = await runner.RunAsync("powershell.exe", $"-NoProfile -Command {Quote(command)}", ct);
-        if (result.ExitCode != 0) logger.Warn($"Could not remove temporary drive letter {driveLetter ?? ""}; continuing because the volume path was already captured.");
+        try
+        {
+            var result = await runner.RunAsync("powershell.exe", "-NoProfile -Command \"Update-HostStorageCache -ErrorAction SilentlyContinue\"", ct);
+            if (result.ExitCode != 0)
+                logger.Warn($"Storage rescan returned exit code {result.ExitCode}: {result.StdErr.Trim()}");
+        }
+        catch (Exception ex) { logger.Warn($"Storage rescan was unavailable: {ex.Message}"); }
+        await Task.Delay(750, ct);
     }
 
     private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
