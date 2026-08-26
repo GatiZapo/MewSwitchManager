@@ -5,6 +5,7 @@ namespace MewSwitchManager.Infrastructure;
 public sealed class JsonStore<T> where T : class, new()
 {
     private readonly string _path;
+    public string Path => _path;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public JsonStore(string path) => _path = path;
@@ -30,7 +31,7 @@ public sealed class JsonStore<T> where T : class, new()
 
     public void Save(T value)
     {
-        var directory = Path.GetDirectoryName(_path);
+        var directory = System.IO.Path.GetDirectoryName(_path);
         if (string.IsNullOrWhiteSpace(directory)) throw new InvalidOperationException("State directory is invalid.");
         Directory.CreateDirectory(directory);
 
