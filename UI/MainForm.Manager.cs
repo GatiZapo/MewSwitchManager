@@ -8,6 +8,7 @@ namespace MewSwitchManager.UI;
 public sealed partial class MainForm
 {
     private SwitchComponentManager _componentManager = null!;
+    private readonly ComponentCatalogService _catalogService = new();
     private readonly ComboBox _switchStorageSelector = new();
     private readonly ComboBox _componentSelector = new();
     private readonly Button _componentScan = new();
@@ -39,7 +40,7 @@ public sealed partial class MainForm
         card.Padding = new Padding(16);
 
         var title = new Label { Dock = DockStyle.Top, Height = 30, Text = "SWITCH MANAGER", ForeColor = Theme.Text, Font = Theme.UI(13, FontStyle.Bold) };
-        var subtitle = new Label { Dock = DockStyle.Top, Height = 28, Text = "Detect, download and update Hekate, Atmosphère and DBI directly on the mounted Switch storage.", ForeColor = Theme.Muted, Font = Theme.UI(8.3f) };
+        var subtitle = new Label { Dock = DockStyle.Top, Height = 28, Text = "Detect, download and update managed Switch components using a validated dependency catalog.", ForeColor = Theme.Muted, Font = Theme.UI(8.3f) };
 
         var targetRow = new TableLayoutPanel { Dock = DockStyle.Top, Height = 42, ColumnCount = 3, BackColor = Theme.Surface, Margin = Padding.Empty };
         targetRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -88,7 +89,7 @@ public sealed partial class MainForm
         var warning = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "SAFE UPDATE MODEL\n• Downloads are cached and resumable.\n• Archives are extracted into staging with path-traversal protection.\n• Existing bootloader / Atmosphère / DBI data is backed up before replacement.\n• Updates merge files; user configuration is not deleted.\n• Linux remains a separate destructive workflow.",
+            Text = "SAFE UPDATE MODEL\n• Catalog is validated before release queries.\n• Downloads are cached and resumable.\n• Archives are extracted into staging with path-traversal protection.\n• Existing bootloader / Atmosphère / DBI data is transactionally captured before replacement.\n• Failed updates are rolled back and verified before the operation is reported as failed.\n• Linux remains a separate destructive workflow.",
             ForeColor = Theme.Muted,
             Font = Theme.Mono(7.6f),
             Padding = new Padding(0, 10, 0, 0)
@@ -128,11 +129,21 @@ public sealed partial class MainForm
         try
         {
             _componentScan.Enabled = false;
-            _componentStatus.Text = "Querying official release channels...";
+            var manifestPath = Path.Combine(AppContext.BaseDirectory, "Models", "MewNxManifest.json");
+            if (!File.Exists(manifestPath)) manifestPath = Path.Combine(AppContext.BaseDirectory, "MewNxManifest.json");
+            var catalog = _catalogService.Load(manifestPath);
+            if (!catalog.IsValid)
+            {
+                _componentStatus.Text = "CATALOG INVALID • " + string.Join(" | ", catalog.Errors);
+                SetStatus("●  COMPONENT CATALOG INVALID", Theme.Red);
+                return;
+            }
+
+            _componentStatus.Text = $"Validated catalog v{catalog.SchemaVersion} • {catalog.Components.Count} components • querying official release channels...";
             var statuses = await _componentManager.ScanAsync(target.Root);
             _componentStatus.Text = string.Join("   ", statuses.Where(x => x.Definition.Id is SwitchComponent.Hekate or SwitchComponent.Atmosphere or SwitchComponent.Dbi)
                 .Select(x => $"{x.Definition.Name}: {x.InstalledVersion} → {x.AvailableVersion}"));
-            SetStatus("●  COMPONENTS SCANNED", Theme.Green);
+            SetStatus("●  COMPONENTS SCANNED • CATALOG VALID", Theme.Green);
         }
         catch (Exception ex)
         {
@@ -157,7 +168,7 @@ public sealed partial class MainForm
         }
 
         var confirm = MessageBox.Show(this,
-            $"Se actualizará {component.Name} en {target.Root}.\n\nSe hará una copia de seguridad de los archivos relevantes antes de reemplazarlos y no se borrará la configuración existente.\n\n¿Continuar?",
+            $"Se actualizará {component.Name} en {target.Root}.\n\nSe hará una copia de seguridad y una transacción verificable antes de reemplazar archivos. Si algo falla, MewNX intentará restaurar el estado exacto anterior.\n\n¿Continuar?",
             "Switch Manager — COMPONENT UPDATE",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Information,
