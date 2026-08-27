@@ -4,9 +4,8 @@ using MewSwitchManager.Models;
 namespace MewSwitchManager.Core;
 
 /// <summary>
-/// Loads and evaluates the authoritative component metadata used by update planning.
-/// The catalog is deliberately data-driven: compatibility rules are never guessed from
-/// component names or release dates.
+/// Loads and evaluates authoritative component metadata used by update planning.
+/// Compatibility rules are data-driven and are never guessed from component names.
 /// </summary>
 public sealed class ComponentCatalogService
 {
@@ -19,8 +18,7 @@ public sealed class ComponentCatalogService
     public ComponentCatalog Load(string path)
     {
         if (!File.Exists(path)) throw new FileNotFoundException("Component catalog was not found.", path);
-        var json = File.ReadAllText(path);
-        return Parse(json);
+        return Parse(File.ReadAllText(path));
     }
 
     public ComponentCatalog Parse(string json)
@@ -68,7 +66,7 @@ public sealed class ComponentCatalogService
                 incompatible.Add(id);
 
             foreach (var conflict in entry.Conflicts)
-                if (installedVersions.ContainsKey(conflict) || entries.ContainsKey(conflict)) conflicts.Add($"{id}:{conflict}");
+                if (installedVersions.ContainsKey(conflict)) conflicts.Add($"{id}:{conflict}");
 
             if (!installedVersions.ContainsKey(id)) ordered.Add(entry);
         }
