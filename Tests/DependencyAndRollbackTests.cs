@@ -89,7 +89,7 @@ public sealed class DependencyAndRollbackTests
 
         var plan = new DependencyManager().BuildPlan(manifest, ["a"], new Dictionary<string, string>());
 
-        Assert.Contains("a", plan.Cycles.Concat(new[] { "a" }));
+        Assert.Contains("a", plan.Cycles);
         Assert.Empty(plan.InstallOrder);
     }
 
