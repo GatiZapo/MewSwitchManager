@@ -1,7 +1,7 @@
 using System.Text.Json;
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
 public sealed class ComponentCatalogService
 {
@@ -13,16 +13,26 @@ public sealed class ComponentCatalogService
 
     public ComponentCatalog Load(string path)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (!File.Exists(path)) throw new FileNotFoundException("Component catalog was not found.", path);
         return Parse(File.ReadAllText(path));
     }
 
     public ComponentCatalog Parse(string json)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(json);
         var catalog = JsonSerializer.Deserialize<ComponentCatalog>(json, JsonOptions)
             ?? throw new InvalidDataException("Component catalog is empty or invalid.");
-        if (catalog.SchemaVersion < 1) throw new InvalidDataException("Unsupported component catalog schema.");
-        if (catalog.Components is null) throw new InvalidDataException("Component catalog has no component list.");
+        ValidateCatalog(catalog);
+        return catalog;
+    }
+
+    private static void ValidateCatalog(ComponentCatalog catalog)
+    {
+        if (catalog.SchemaVersion < 1)
+            throw new InvalidDataException("Unsupported component catalog schema.");
+        if (catalog.Components is null)
+            throw new InvalidDataException("Component catalog has no component list.");
 
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var component in catalog.Components)
@@ -37,15 +47,16 @@ public sealed class ComponentCatalogService
 
         foreach (var component in catalog.Components)
         {
-            foreach (var dependency in component.Dependencies)
-                if (!ids.Contains(dependency))
-                    throw new InvalidDataException($"Component {component.Id} references missing dependency {dependency}.");
-            foreach (var conflict in component.Conflicts)
-                if (!ids.Contains(conflict))
-                    throw new InvalidDataException($"Component {component.Id} references missing conflict {conflict}.");
+            ValidateReferences(component.Id, component.Dependencies, ids, "dependency");
+            ValidateReferences(component.Id, component.Conflicts, ids, "conflict");
         }
+    }
 
-        return catalog;
+    private static void ValidateReferences(string componentId, IEnumerable<string> references, HashSet<string> ids, string kind)
+    {
+        foreach (var reference in references)
+            if (!ids.Contains(reference))
+                throw new InvalidDataException($"Component {componentId} references missing {kind} {reference}.");
     }
 
     public ComponentUpdatePlan BuildPlan(
@@ -53,6 +64,10 @@ public sealed class ComponentCatalogService
         IEnumerable<string> requested,
         IReadOnlyDictionary<string, string> installedVersions)
     {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(requested);
+        ArgumentNullException.ThrowIfNull(installedVersions);
+
         var entries = catalog.Components.ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
         var ordered = new List<ComponentCatalogEntry>();
         var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -114,7 +129,8 @@ public sealed class ComponentCatalogService
             return true;
         }
 
-        foreach (var id in requested.Where(x => !string.IsNullOrWhiteSpace(x))) Visit(id);
+        foreach (var id in requested.Where(static x => !string.IsNullOrWhiteSpace(x)))
+            Visit(id);
 
         return new ComponentUpdatePlan(
             ordered.DistinctBy(x => x.Id, StringComparer.OrdinalIgnoreCase).ToArray(),
