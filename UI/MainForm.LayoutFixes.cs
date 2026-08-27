@@ -1,4 +1,4 @@
-namespace MewSwitchManager.UI;
+namespace MewNX.UI;
 
 public sealed partial class MainForm
 {
