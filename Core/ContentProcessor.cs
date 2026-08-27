@@ -1,6 +1,8 @@
 using System.IO.Compression;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
+using SharpCompress.Archives;
+using SharpCompress.Common;
 
 namespace MewSwitchManager.Core;
 
@@ -14,19 +16,32 @@ public sealed class ContentProcessor
         if (!File.Exists(input)) throw new FileNotFoundException("Content file not found.", input);
         Directory.CreateDirectory(workDirectory);
         var extension = Path.GetExtension(input);
-        if (extension.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        if (extension.Equals(".zip", StringComparison.OrdinalIgnoreCase) || extension.Equals(".7z", StringComparison.OrdinalIgnoreCase) || extension.Equals(".tar", StringComparison.OrdinalIgnoreCase) || extension.Equals(".gz", StringComparison.OrdinalIgnoreCase))
         {
             var extract = Path.Combine(workDirectory, "extracted");
             if (Directory.Exists(extract)) Directory.Delete(extract, true);
             Directory.CreateDirectory(extract);
-            ZipFile.ExtractToDirectory(input, extract, overwriteFiles: true);
+            await Task.Run(() => ExtractArchive(input, extract), ct);
             var payload = ResumableDownloadService.FindPreparedPayload(extract);
             if (payload is null) throw new InvalidDataException("Archive did not contain a supported Switch payload/content file.");
             var info = new FileInfo(payload);
-            return await Task.FromResult(new PreparedContent(payload, Path.GetExtension(payload).TrimStart('.').ToUpperInvariant(), info.Length));
+            _logger.Info($"Game Center extracted {Path.GetFileName(input)} to {payload}.");
+            return new PreparedContent(payload, Path.GetExtension(payload).TrimStart('.').ToUpperInvariant(), info.Length);
         }
         var file = new FileInfo(input);
         return await Task.FromResult(new PreparedContent(input, extension.TrimStart('.').ToUpperInvariant(), file.Length));
+    }
+
+    private static void ExtractArchive(string input, string destination)
+    {
+        if (Path.GetExtension(input).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            ZipFile.ExtractToDirectory(input, destination, overwriteFiles: true);
+            return;
+        }
+        using var archive = ArchiveFactory.Open(input);
+        foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
+            entry.WriteToDirectory(destination, new ExtractionOptions { ExtractFullPath = true, Overwrite = true });
     }
 
     public static void Cleanup(string workingDirectory, IEnumerable<string> keepPaths)
