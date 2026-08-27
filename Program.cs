@@ -1,7 +1,7 @@
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.UI;
+using MewNX.Infrastructure;
+using MewNX.UI;
 
-namespace MewSwitchManager;
+namespace MewNX;
 
 internal static class Program
 {
