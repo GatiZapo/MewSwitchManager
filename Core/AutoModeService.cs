@@ -1,5 +1,6 @@
 using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Core;
+using MewNX.Models;
 
 namespace MewSwitchManager.Core;
 
