@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Infrastructure;
+namespace MewNX.Infrastructure;
 
 public sealed record GitHubAsset(string Name, string Url, long Size, string? Digest);
 public sealed record GitHubRelease(string TagName, string Name, string HtmlUrl, bool Prerelease, IReadOnlyList<GitHubAsset> Assets);
@@ -79,8 +79,6 @@ public sealed class GitHubReleaseClient
             append = range?.From == existing;
         }
 
-        // Some servers ignore Range and return 200. Never append in that case;
-        // starting a fresh part is safer than silently corrupting the payload.
         if (!append) existing = 0;
         await CopyToPartAsync(response, part, existing, progress, ct);
     }
