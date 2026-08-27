@@ -39,9 +39,8 @@ public sealed class ContentProcessor
             ZipFile.ExtractToDirectory(input, destination, overwriteFiles: true);
             return;
         }
-        using var archive = ArchiveFactory.Open(input);
-        foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
-            entry.WriteToDirectory(destination, new ExtractionOptions { ExtractFullPath = true, Overwrite = true });
+        using var archive = ArchiveFactory.OpenArchive(input);
+        archive.WriteToDirectory(destination, new ExtractionOptions { ExtractFullPath = true, Overwrite = true, CheckCrc = true });
     }
 
     public static void Cleanup(string workingDirectory, IEnumerable<string> keepPaths)
