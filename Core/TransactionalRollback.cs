@@ -5,7 +5,7 @@ namespace MewSwitchManager.Core;
 /// <summary>
 /// File-system transaction journal used by managed component updates.
 /// A transaction can snapshot individual files or an entire component directory.
-/// Rollback restores overwritten files and removes files/directories created after capture.
+/// Rollback restores overwritten files and removes every file/directory created after capture.
 /// </summary>
 public sealed class TransactionalRollback : IDisposable
 {
@@ -48,6 +48,7 @@ public sealed class TransactionalRollback : IDisposable
         _capturedDirectories[full] = existed;
         if (!existed) return;
 
+        _originalDirectories.Add(full);
         foreach (var directory in Directory.EnumerateDirectories(full, "*", SearchOption.AllDirectories))
             _originalDirectories.Add(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
@@ -73,14 +74,15 @@ public sealed class TransactionalRollback : IDisposable
                 }
 
                 if (!Directory.Exists(capturedDirectory.Key)) continue;
-                foreach (var file in Directory.EnumerateFiles(capturedDirectory.Key, "*", SearchOption.AllDirectories))
+
+                foreach (var file in Directory.EnumerateFiles(capturedDirectory.Key, "*", SearchOption.AllDirectories).ToArray())
                 {
                     var full = Path.GetFullPath(file);
                     if (!_originals.ContainsKey(full)) File.Delete(full);
                 }
 
                 foreach (var directory in Directory.EnumerateDirectories(capturedDirectory.Key, "*", SearchOption.AllDirectories)
-                             .OrderByDescending(x => x.Length))
+                             .OrderByDescending(x => x.Length).ToArray())
                 {
                     var full = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                     if (!_originalDirectories.Contains(full) && !Directory.EnumerateFileSystemEntries(full).Any())
@@ -110,9 +112,8 @@ public sealed class TransactionalRollback : IDisposable
     }
 
     /// <summary>
-    /// Verifies that the filesystem matches the captured pre-transaction state.
-    /// This is intentionally independent of the rollback implementation so a silent
-    /// rollback failure cannot be reported as success.
+    /// Verifies the complete captured filesystem state, not just the files that were
+    /// restored. Extra files/directories left behind by a failed rollback are rejected.
     /// </summary>
     public bool VerifyRestoredState()
     {
@@ -131,8 +132,23 @@ public sealed class TransactionalRollback : IDisposable
             if (!HashesEqual(pair.Key, pair.Value)) return false;
         }
 
-        foreach (var directory in _capturedDirectories)
-            if (directory.Value != Directory.Exists(directory.Key)) return false;
+        foreach (var capturedDirectory in _capturedDirectories)
+        {
+            if (capturedDirectory.Value != Directory.Exists(capturedDirectory.Key)) return false;
+            if (!capturedDirectory.Value) continue;
+
+            foreach (var file in Directory.EnumerateFiles(capturedDirectory.Key, "*", SearchOption.AllDirectories))
+            {
+                var full = Path.GetFullPath(file);
+                if (!_originals.ContainsKey(full)) return false;
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(capturedDirectory.Key, "*", SearchOption.AllDirectories))
+            {
+                var full = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (!_originalDirectories.Contains(full)) return false;
+            }
+        }
 
         return true;
     }
