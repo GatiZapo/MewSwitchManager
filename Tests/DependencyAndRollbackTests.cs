@@ -1,5 +1,6 @@
 using MewSwitchManager.Core;
 using MewSwitchManager.Models;
+using Xunit;
 
 namespace MewSwitchManager.Tests;
 
@@ -38,7 +39,7 @@ public sealed class DependencyAndRollbackTests
 
         var plan = new DependencyManager().BuildPlan(manifest, ["tesla"], new Dictionary<string, string>());
 
-        Assert.Equal(["hekate", "atmosphere", "tesla"], plan.InstallOrder);
+        Assert.Equal(new[] { "hekate", "atmosphere", "tesla" }, plan.InstallOrder);
         Assert.Empty(plan.Missing);
         Assert.Empty(plan.Cycles);
     }
