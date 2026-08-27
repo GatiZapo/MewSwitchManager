@@ -27,7 +27,7 @@ public sealed class SystemDiagnostics
         _logger = logger;
     }
 
-    public Task<DiagnosticReport> RunAsync(InstallationEngine engine, CancellationToken ct = default)
+    public async Task<DiagnosticReport> RunAsync(InstallationEngine engine, CancellationToken ct = default)
     {
         var checks = new List<DiagnosticCheck>();
         ct.ThrowIfCancellationRequested();
@@ -79,6 +79,29 @@ public sealed class SystemDiagnostics
                 : new("sd-emummc", "emuMMC", DiagnosticSeverity.Warning, "emuMMC directory not detected."));
             foreach (var warning in sd.Warnings)
                 checks.Add(new("sd-warning-" + checks.Count, "SD warning", DiagnosticSeverity.Warning, warning));
+
+            try
+            {
+                var deep = await new ComponentHealthService().ScanAsync(sd.Root, null, ct);
+                foreach (var item in deep)
+                {
+                    var severity = item.Severity switch
+                    {
+                        ComponentHealthSeverity.Healthy => DiagnosticSeverity.Pass,
+                        ComponentHealthSeverity.Warning => DiagnosticSeverity.Warning,
+                        _ => DiagnosticSeverity.Fail
+                    };
+                    var detail = item.ActualSha256 is null
+                        ? item.Message
+                        : $"{item.Message} SHA-256={item.ActualSha256}";
+                    checks.Add(new("component-health-" + item.ComponentId, $"Component health: {item.Title}", severity, detail));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Deep component health scan failed: {ex.Message}");
+                checks.Add(new("component-health", "Component health", DiagnosticSeverity.Warning, "Deep component integrity scan could not be completed."));
+            }
         }
 
         checks.Add(engine.HekateDetected
@@ -97,7 +120,7 @@ public sealed class SystemDiagnostics
 
         var report = new DiagnosticReport(DateTimeOffset.UtcNow, checks);
         _logger.Info($"Diagnostics completed: {checks.Count(x => x.Severity == DiagnosticSeverity.Pass)} pass, {checks.Count(x => x.Severity == DiagnosticSeverity.Warning)} warning, {checks.Count(x => x.Severity == DiagnosticSeverity.Fail)} fail.");
-        return Task.FromResult(report);
+        return report;
     }
 
     private static SwitchSdReport? SafeInspect(string root)
