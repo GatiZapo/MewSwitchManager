@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
@@ -35,7 +34,6 @@ public sealed class RepairService
 
         actions.Add(EnsureDirectory(_paths.DataDirectory, "data"));
         actions.Add(EnsureDirectory(_paths.CacheDirectory, "cache"));
-
         actions.Add(RepairStateFile(_paths.StateFile, ct));
         actions.Add(RepairComponentState(Path.Combine(_paths.DataDirectory, "components.json"), ct));
         actions.Add(RepairLinuxImageCache(ct));
@@ -61,7 +59,6 @@ public sealed class RepairService
             var state = store.LoadOrCreate();
             state.EnsureStages();
             state.ReconcilePersistedProgress();
-
             var existed = File.Exists(path);
             store.Save(state);
             return new("state", !existed, existed ? "Persisted workflow state validated and normalized." : "Created missing workflow state.");
