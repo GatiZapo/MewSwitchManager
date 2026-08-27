@@ -95,8 +95,11 @@ public static class VersionConstraintParser
     }
 
     private static bool TryParseCoreNumber(string value, out long number)
-        => IsNumeric(value) && !(value.Length > 1 && value[0] == '0') &&
-           long.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out number);
+    {
+        number = 0;
+        if (!IsNumeric(value) || (value.Length > 1 && value[0] == '0')) return false;
+        return long.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out number);
+    }
 
     private static bool IsValidIdentifierList(string value)
         => !string.IsNullOrEmpty(value) && value.Split('.').All(IsValidIdentifier);
