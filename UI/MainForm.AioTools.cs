@@ -1,9 +1,9 @@
-using MewSwitchManager.Core;
-using MewSwitchManager.Hardware;
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Core;
+using MewNX.Hardware;
+using MewNX.Infrastructure;
+using MewNX.Models;
 
-namespace MewSwitchManager.UI;
+namespace MewNX.UI;
 
 public sealed partial class MainForm
 {
