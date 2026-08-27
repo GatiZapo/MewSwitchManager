@@ -1,7 +1,7 @@
-using MewSwitchManager.Core;
+using MewNX.Core;
+using MewNX.Models;
 using MewSwitchManager.Hardware;
 using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
 
 namespace MewSwitchManager.UI;
 
