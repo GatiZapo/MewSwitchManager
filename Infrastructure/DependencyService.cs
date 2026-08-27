@@ -1,13 +1,13 @@
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Infrastructure;
+namespace MewNX.Infrastructure;
 
 public sealed class DependencyService(ProcessRunner runner, AppLogger logger)
 {
     public IReadOnlyList<DependencyInfo> Detect()
     {
         if (!OperatingSystem.IsWindows())
-            return [new("Windows", "windows", false, true, "MewSwitch Manager requires Windows 10 1809 or newer.")];
+            return [new("Windows", "windows", false, true, "MewNX requires Windows 10 1809 or newer.")];
 
         return
         [
