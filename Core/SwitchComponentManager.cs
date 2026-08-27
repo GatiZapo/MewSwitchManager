@@ -88,6 +88,8 @@ public sealed class SwitchComponentManager
         _releases.PromotePart(downloadPath);
 
         var backupRoot = BackupBeforeUpdate(targetRoot, definition, release.TagName);
+        using var transaction = new TransactionalRollback(_paths.CacheDirectory);
+        CaptureManagedArea(transaction, targetRoot, definition);
         try
         {
             if (component == SwitchComponent.Dbi)
@@ -111,9 +113,19 @@ public sealed class SwitchComponentManager
                 }
                 finally { TryDeleteDirectory(stage); }
             }
+
+            _state.LastTargetRoot = targetRoot;
+            _state.LastKnownVersions[component.ToString()] = release.TagName;
+            _state.UpdatedAt = DateTimeOffset.UtcNow;
+            new JsonStore<ComponentManagerState>(_stateFile).Save(_state);
+            transaction.Commit();
         }
         catch
         {
+            // The transaction restores the exact managed component tree, including files
+            // that did not exist before the update. The legacy backup remains as a
+            // user-visible recovery point even if automatic rollback succeeds.
+            transaction.Rollback();
             if (!string.IsNullOrWhiteSpace(backupRoot))
             {
                 try { RestoreBackup(targetRoot, backupRoot); }
@@ -122,12 +134,25 @@ public sealed class SwitchComponentManager
             throw;
         }
 
-        _state.LastTargetRoot = targetRoot;
-        _state.LastKnownVersions[component.ToString()] = release.TagName;
-        _state.UpdatedAt = DateTimeOffset.UtcNow;
-        new JsonStore<ComponentManagerState>(_stateFile).Save(_state);
         _logger.Info($"{definition.Name} updated to {release.TagName} on {targetRoot}.");
         return new ComponentStatus(definition, true, release.TagName, release.TagName, release.HtmlUrl, false, "Updated successfully; existing configuration was preserved where files overlapped.");
+    }
+
+    private static void CaptureManagedArea(TransactionalRollback transaction, string targetRoot, ComponentDefinition definition)
+    {
+        if (definition.Id == SwitchComponent.Dbi)
+        {
+            transaction.Capture(Path.Combine(targetRoot, "switch", "DBI", "DBI.nro"));
+            return;
+        }
+
+        var managedRoot = definition.Id switch
+        {
+            SwitchComponent.Hekate => Path.Combine(targetRoot, "bootloader"),
+            SwitchComponent.Atmosphere => Path.Combine(targetRoot, "atmosphere"),
+            _ => targetRoot
+        };
+        transaction.CaptureDirectory(managedRoot);
     }
 
     private Task<GitHubRelease> GetReleaseAsync(ComponentDefinition definition, CancellationToken ct)
