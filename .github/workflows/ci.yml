@@ -18,15 +18,13 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.x
-      - name: Restore
+      - name: Restore application
         run: dotnet restore MewSwitchManager.csproj
-      - name: Build
+      - name: Restore tests
+        run: dotnet restore Tests/MewSwitchManager.Tests.csproj
+      - name: Build application
         run: dotnet build MewSwitchManager.csproj --configuration Release --no-restore --nologo
-      - name: Publish
+      - name: Run regression tests
+        run: dotnet test Tests/MewSwitchManager.Tests.csproj --configuration Release --no-restore --verbosity normal --nologo
+      - name: Publish ${{ matrix.rid }}
         run: dotnet publish MewSwitchManager.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained true --no-restore --nologo
-      - name: Test core regression suite
-        shell: pwsh
-        run: |
-          $testFiles = Get-ChildItem -Path Tests -Filter *.cs -File
-          if ($testFiles.Count -eq 0) { throw 'No regression tests found.' }
-          Write-Host "Regression test sources found: $($testFiles.Count)"
