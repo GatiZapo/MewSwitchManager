@@ -1,7 +1,7 @@
 using System.Text.Json;
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Infrastructure;
+namespace MewNX.Infrastructure;
 
 public static class ConfigLoader
 {
