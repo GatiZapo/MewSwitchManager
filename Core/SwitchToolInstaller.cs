@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using SharpCompress.Archives;
 using SharpCompress.Common;
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Infrastructure;
+using MewNX.Models;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
 public sealed record SwitchToolInstallResult(SwitchToolDefinition Definition, string Version, string BackupPath, string Message);
 
