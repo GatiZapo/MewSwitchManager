@@ -1,12 +1,13 @@
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Core;
+using MewNX.Infrastructure;
+using MewNX.Models;
 
-namespace MewSwitchManager.Hardware;
+namespace MewNX.Hardware;
 
 public sealed class UsbStorageService(
     ProcessRunner runner,
     AppLogger logger,
-    MewSwitchManager.Core.SafetyEngine safety)
+    SafetyEngine safety)
 {
     private readonly NativeVolumeWriter _writer = new();
     private readonly DiskService _disks = new(runner, logger);
@@ -33,10 +34,6 @@ public sealed class UsbStorageService(
             throw new InvalidOperationException($"The selected USB is too small. It has about {target.SizeGb:0.0} GB, while the Linux image needs {rawSize / 1_000_000_000d:0.00} GB.");
         if (!int.TryParse(target.Number, out var diskNumber)) throw new InvalidOperationException("Invalid target disk number.");
 
-        // ubuntu.raw is a disk image. Do not create a Windows filesystem partition and then
-        // try to open its volume GUID: immediately after DiskPart creates a RAW partition the
-        // volume can be unavailable, which caused the observed target-volume error. A disk
-        // image must be written to the physical USB disk itself.
         progress?.Report(new DownloadProgress(0, 1, 0, null, "VERIFYING TARGET", "Re-checking USB identity before the destructive operation."));
         var before = await _disks.GetDiskAsync(target.Number, ct);
         safety.DemandStableIdentity(target, before);
