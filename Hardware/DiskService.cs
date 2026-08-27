@@ -1,8 +1,8 @@
 using System.Text.Json;
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Infrastructure;
+using MewNX.Models;
 
-namespace MewSwitchManager.Hardware;
+namespace MewNX.Hardware;
 
 public sealed class DiskService(ProcessRunner runner, AppLogger logger)
 {
