@@ -1,12 +1,8 @@
 using System.Security.Cryptography;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
-/// <summary>
-/// File-system transaction journal used by managed component updates.
-/// A transaction can snapshot individual files or an entire component directory.
-/// Rollback restores overwritten files and removes every file/directory created after capture.
-/// </summary>
+/// <summary>Snapshots managed filesystem targets and restores them on transaction failure.</summary>
 public sealed class TransactionalRollback : IDisposable
 {
     private readonly string _root;
@@ -18,7 +14,8 @@ public sealed class TransactionalRollback : IDisposable
 
     public TransactionalRollback(string workingDirectory)
     {
-        _root = Path.Combine(workingDirectory, "_mewnx-transactions", Guid.NewGuid().ToString("N"));
+        ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        _root = Path.Combine(Path.GetFullPath(workingDirectory), "_mewnx-transactions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
     }
 
@@ -41,7 +38,7 @@ public sealed class TransactionalRollback : IDisposable
 
     public void CaptureDirectory(string directoryPath)
     {
-        var full = Path.GetFullPath(directoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var full = NormalizeDirectory(directoryPath);
         if (_capturedDirectories.ContainsKey(full)) return;
 
         var existed = Directory.Exists(full);
@@ -50,71 +47,54 @@ public sealed class TransactionalRollback : IDisposable
 
         _originalDirectories.Add(full);
         foreach (var directory in Directory.EnumerateDirectories(full, "*", SearchOption.AllDirectories))
-            _originalDirectories.Add(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            _originalDirectories.Add(NormalizeDirectory(directory));
 
         foreach (var file in Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories))
             Capture(file);
     }
 
-    public void Commit() => _committed = true;
+    public void Commit()
+    {
+        if (_rolledBack) throw new InvalidOperationException("A rolled-back transaction cannot be committed.");
+        _committed = true;
+    }
 
     public void Rollback()
     {
-        if (_committed || _rolledBack) return;
+        if (_committed) throw new InvalidOperationException("A committed transaction cannot be rolled back.");
+        if (_rolledBack) return;
         _rolledBack = true;
+
+        var failures = new List<Exception>();
 
         foreach (var capturedDirectory in _capturedDirectories)
         {
             try
             {
-                if (!capturedDirectory.Value)
-                {
-                    if (Directory.Exists(capturedDirectory.Key)) Directory.Delete(capturedDirectory.Key, true);
-                    continue;
-                }
-
-                if (!Directory.Exists(capturedDirectory.Key)) continue;
-
-                foreach (var file in Directory.EnumerateFiles(capturedDirectory.Key, "*", SearchOption.AllDirectories).ToArray())
-                {
-                    var full = Path.GetFullPath(file);
-                    if (!_originals.ContainsKey(full)) File.Delete(full);
-                }
-
-                foreach (var directory in Directory.EnumerateDirectories(capturedDirectory.Key, "*", SearchOption.AllDirectories)
-                             .OrderByDescending(x => x.Length).ToArray())
-                {
-                    var full = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    if (!_originalDirectories.Contains(full) && !Directory.EnumerateFileSystemEntries(full).Any())
-                        Directory.Delete(full, false);
-                }
+                RestoreDirectoryStructure(capturedDirectory.Key, capturedDirectory.Value);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                failures.Add(new IOException($"Failed to restore directory '{capturedDirectory.Key}'.", ex));
+            }
         }
 
         foreach (var pair in _originals.Reverse())
         {
             try
             {
-                if (pair.Value is null)
-                {
-                    if (File.Exists(pair.Key)) File.Delete(pair.Key);
-                    continue;
-                }
-
-                var directory = Path.GetDirectoryName(pair.Key);
-                if (string.IsNullOrWhiteSpace(directory)) continue;
-                Directory.CreateDirectory(directory);
-                File.Copy(pair.Value, pair.Key, true);
+                RestoreFile(pair.Key, pair.Value);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                failures.Add(new IOException($"Failed to restore file '{pair.Key}'.", ex));
+            }
         }
+
+        if (failures.Count > 0)
+            throw new AggregateException("One or more rollback operations failed.", failures);
     }
 
-    /// <summary>
-    /// Verifies the complete captured filesystem state, not just the files that were
-    /// restored. Extra files/directories left behind by a failed rollback are rejected.
-    /// </summary>
     public bool VerifyRestoredState()
     {
         if (!_rolledBack || _committed) return false;
@@ -138,20 +118,55 @@ public sealed class TransactionalRollback : IDisposable
             if (!capturedDirectory.Value) continue;
 
             foreach (var file in Directory.EnumerateFiles(capturedDirectory.Key, "*", SearchOption.AllDirectories))
-            {
-                var full = Path.GetFullPath(file);
-                if (!_originals.ContainsKey(full)) return false;
-            }
+                if (!_originals.ContainsKey(Path.GetFullPath(file))) return false;
 
             foreach (var directory in Directory.EnumerateDirectories(capturedDirectory.Key, "*", SearchOption.AllDirectories))
-            {
-                var full = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                if (!_originalDirectories.Contains(full)) return false;
-            }
+                if (!_originalDirectories.Contains(NormalizeDirectory(directory))) return false;
         }
 
         return true;
     }
+
+    private void RestoreDirectoryStructure(string directory, bool existed)
+    {
+        if (!existed)
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            return;
+        }
+
+        if (!Directory.Exists(directory)) return;
+
+        foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).ToArray())
+            if (!_originals.ContainsKey(Path.GetFullPath(file))) File.Delete(file);
+
+        foreach (var child in Directory.EnumerateDirectories(directory, "*", SearchOption.AllDirectories)
+                     .OrderByDescending(static path => path.Length).ToArray())
+        {
+            var full = NormalizeDirectory(child);
+            if (!_originalDirectories.Contains(full) && !Directory.EnumerateFileSystemEntries(full).Any())
+                Directory.Delete(full, false);
+        }
+    }
+
+    private static void RestoreFile(string target, string? backup)
+    {
+        if (backup is null)
+        {
+            if (File.Exists(target)) File.Delete(target);
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(target);
+        if (string.IsNullOrWhiteSpace(directory))
+            throw new IOException("Target has no parent directory.");
+
+        Directory.CreateDirectory(directory);
+        File.Copy(backup, target, true);
+    }
+
+    private static string NormalizeDirectory(string path)
+        => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     private static bool HashesEqual(string left, string right)
     {
@@ -163,7 +178,11 @@ public sealed class TransactionalRollback : IDisposable
 
     public void Dispose()
     {
-        if (!_committed) Rollback();
+        if (!_committed && !_rolledBack)
+        {
+            try { Rollback(); } catch { /* Best-effort cleanup during disposal. */ }
+        }
+
         try
         {
             if (Directory.Exists(_root)) Directory.Delete(_root, true);
@@ -171,6 +190,6 @@ public sealed class TransactionalRollback : IDisposable
             if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any())
                 Directory.Delete(parent, false);
         }
-        catch { }
+        catch { /* Cleanup must not mask the operation result. */ }
     }
 }
