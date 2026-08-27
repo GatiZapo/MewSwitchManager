@@ -1,5 +1,5 @@
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.UI;
+using MewNX.Infrastructure;
+using MewNX.UI;
 
 namespace MewNX;
 
