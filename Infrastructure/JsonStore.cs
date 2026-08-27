@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace MewSwitchManager.Infrastructure;
+namespace MewNX.Infrastructure;
 
 public sealed class JsonStore<T> where T : class, new()
 {
