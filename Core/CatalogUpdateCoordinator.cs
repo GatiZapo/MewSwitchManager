@@ -1,8 +1,10 @@
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
-public sealed record CatalogUpdateSelection(ComponentUpdatePlan Plan, IReadOnlyList<string> Blockers)
+public sealed record CatalogUpdateSelection(
+    ComponentUpdatePlan Plan,
+    IReadOnlyList<string> Blockers)
 {
     public bool CanProceed => Plan.CanApply && Blockers.Count == 0;
 }
@@ -11,16 +13,36 @@ public sealed record CatalogUpdateSelection(ComponentUpdatePlan Plan, IReadOnlyL
 public sealed class CatalogUpdateCoordinator
 {
     private readonly ComponentCatalogService _catalog;
-    public CatalogUpdateCoordinator(ComponentCatalogService catalog) => _catalog = catalog;
 
-    public CatalogUpdateSelection Prepare(ComponentCatalog catalog, IEnumerable<string> requested, IReadOnlyDictionary<string, string> installedVersions)
+    public CatalogUpdateCoordinator(ComponentCatalogService catalog)
+        => _catalog = catalog;
+
+    public CatalogUpdateSelection Prepare(
+        ComponentCatalog catalog,
+        IEnumerable<string> requested,
+        IReadOnlyDictionary<string, string> installedVersions)
     {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(requested);
+        ArgumentNullException.ThrowIfNull(installedVersions);
+
         var plan = _catalog.BuildPlan(catalog, requested, installedVersions);
-        var blockers = new List<string>();
-        if (plan.Missing.Count > 0) blockers.AddRange(plan.Missing.Select(x => $"Missing component or dependency: {x}"));
-        if (plan.Incompatible.Count > 0) blockers.AddRange(plan.Incompatible.Select(x => $"Incompatible installed version: {x}"));
-        if (plan.Conflicts.Count > 0) blockers.AddRange(plan.Conflicts.Select(x => $"Component conflict: {x}"));
-        if (plan.Cycles.Count > 0) blockers.AddRange(plan.Cycles.Select(x => $"Dependency cycle: {x}"));
-        return new(plan, blockers.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        var blockers = BuildBlockers(plan);
+        return new(plan, blockers);
+    }
+
+    private static IReadOnlyList<string> BuildBlockers(ComponentUpdatePlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        return new[]
+        {
+            ..plan.Missing.Select(static value => $"Missing component or dependency: {value}"),
+            ..plan.Incompatible.Select(static value => $"Incompatible installed version: {value}"),
+            ..plan.Conflicts.Select(static value => $"Component conflict: {value}"),
+            ..plan.Cycles.Select(static value => $"Dependency cycle: {value}")
+        }
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
     }
 }
