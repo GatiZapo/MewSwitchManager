@@ -3,14 +3,7 @@ using MewSwitchManager.Models;
 
 namespace MewSwitchManager.Core;
 
-public enum AutoRunOutcome
-{
-    CompletedAutomaticSteps,
-    WaitingForUser,
-    Blocked,
-    Failed
-}
-
+public enum AutoRunOutcome { CompletedAutomaticSteps, WaitingForUser, Blocked, Failed }
 public sealed record AutoRunResult(AutoRunOutcome Outcome, AutoPlan Plan, string Message);
 
 public sealed class AutoModeService
@@ -24,20 +17,24 @@ public sealed class AutoModeService
     {
         var plan = _planner.BuildOrRefresh(engine.State);
         engine.SaveAutoPlan(plan);
-
-        if (string.IsNullOrWhiteSpace(engine.State.SelectedDiskNumber))
-            return Block(plan, engine, "Select a safe USB target before starting Auto Mode.");
+        if (string.IsNullOrWhiteSpace(engine.State.SelectedDiskNumber)) return Block(plan, engine, "Select a safe USB target before starting Auto Mode.");
 
         try
         {
+            // Always run the full diagnostic gate before automatic work. Warnings are surfaced;
+            // hard failures stop the plan before any destructive operation can begin.
+            var diagnostics = await new SystemDiagnostics(AppPaths.Create(AppConfig.Load()), AppConfig.Load(), _logger).RunAsync(engine, ct);
+            var diagnosticFailure = diagnostics.Checks.FirstOrDefault(x => x.Severity == DiagnosticSeverity.Fail);
+            if (diagnosticFailure is not null) return Block(plan, engine, $"Diagnostics blocked Auto Mode: {diagnosticFailure.Title}: {diagnosticFailure.Message}");
+
             var preflight = plan.Steps.First(x => x.Kind == AutoStepKind.EnvironmentPreflight);
             if (preflight.State != AutoStepState.Completed)
             {
                 preflight.State = AutoStepState.Running;
-                preflight.Message = "Running environment and target safety checks.";
+                preflight.Message = diagnostics.HasWarnings ? "Diagnostics passed with warnings; running environment and target safety checks." : "Running environment and target safety checks.";
                 engine.SaveAutoPlan(plan);
                 await engine.PreflightAsync(ct);
-                Complete(preflight, "Preflight passed and target identity is safe.");
+                Complete(preflight, diagnostics.HasWarnings ? "Preflight passed; diagnostic warnings were acknowledged by Auto Mode." : "Preflight passed and target identity is safe.");
                 engine.SaveAutoPlan(plan);
             }
 
@@ -54,12 +51,7 @@ public sealed class AutoModeService
 
             plan = _planner.BuildOrRefresh(engine.State);
             var gate = plan.Steps.FirstOrDefault(x => x.State != AutoStepState.Completed);
-            if (gate is null)
-            {
-                engine.SaveAutoPlan(plan);
-                return new(AutoRunOutcome.CompletedAutomaticSteps, plan, "All available Auto Mode steps are complete.");
-            }
-
+            if (gate is null) { engine.SaveAutoPlan(plan); return new(AutoRunOutcome.CompletedAutomaticSteps, plan, "All available Auto Mode steps are complete."); }
             gate.State = AutoStepState.WaitingForUser;
             gate.Message = gate.RequiresConfirmation ? "Auto Mode paused at a user-controlled safety gate." : "Auto Mode is waiting for the next hardware/user checkpoint.";
             plan.CurrentStepId = gate.Id;
@@ -68,21 +60,14 @@ public sealed class AutoModeService
         }
         catch (OperationCanceledException)
         {
-            plan = _planner.BuildOrRefresh(engine.State);
-            engine.SaveAutoPlan(plan);
-            throw;
+            plan = _planner.BuildOrRefresh(engine.State); engine.SaveAutoPlan(plan); throw;
         }
         catch (Exception ex)
         {
             var failed = plan.Steps.FirstOrDefault(x => x.State == AutoStepState.Running);
-            if (failed is not null)
-            {
-                failed.State = AutoStepState.Failed;
-                failed.Message = ex.Message;
-            }
+            if (failed is not null) { failed.State = AutoStepState.Failed; failed.Message = ex.Message; }
             plan.CurrentStepId = failed?.Id ?? plan.CurrentStepId;
-            engine.SaveAutoPlan(plan);
-            _logger.Error("Auto Mode failed", ex);
+            engine.SaveAutoPlan(plan); _logger.Error("Auto Mode failed", ex);
             return new(AutoRunOutcome.Failed, plan, ex.Message);
         }
     }
@@ -90,20 +75,13 @@ public sealed class AutoModeService
     private static AutoRunResult Block(AutoPlan plan, InstallationEngine engine, string message)
     {
         var step = plan.Steps.FirstOrDefault(x => x.State != AutoStepState.Completed);
-        if (step is not null)
-        {
-            step.State = AutoStepState.Blocked;
-            step.Message = message;
-            plan.CurrentStepId = step.Id;
-        }
+        if (step is not null) { step.State = AutoStepState.Blocked; step.Message = message; plan.CurrentStepId = step.Id; }
         engine.SaveAutoPlan(plan);
         return new(AutoRunOutcome.Blocked, plan, message);
     }
 
     private static void Complete(AutoPlanStep step, string message)
     {
-        step.State = AutoStepState.Completed;
-        step.Message = message;
-        step.CompletedAt = DateTimeOffset.UtcNow;
+        step.State = AutoStepState.Completed; step.Message = message; step.CompletedAt = DateTimeOffset.UtcNow;
     }
 }
