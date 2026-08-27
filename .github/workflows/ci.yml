@@ -10,6 +10,7 @@ jobs:
   build-test:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         rid: [win-x86, win-x64, win-arm64]
     steps:
@@ -24,7 +25,9 @@ jobs:
         run: dotnet restore Tests/MewSwitchManager.Tests.csproj
       - name: Build application
         run: dotnet build MewSwitchManager.csproj --configuration Release --no-restore --nologo
+      - name: Build tests
+        run: dotnet build Tests/MewSwitchManager.Tests.csproj --configuration Release --no-restore --nologo -warnaserror
       - name: Run regression tests
-        run: dotnet test Tests/MewSwitchManager.Tests.csproj --configuration Release --no-restore --verbosity normal --nologo
+        run: dotnet test Tests/MewSwitchManager.Tests.csproj --configuration Release --no-build --no-restore --verbosity normal --nologo
       - name: Publish ${{ matrix.rid }}
         run: dotnet publish MewSwitchManager.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained true --no-restore --nologo
