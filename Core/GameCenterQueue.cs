@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
@@ -42,20 +41,16 @@ public sealed class GameCenterQueue
     {
         try
         {
-            string source;
-            if (job.SourceKind == DownloadSourceKind.DirectUrl)
-                source = await _downloader.DownloadAsync(job, progress, ct);
-            else source = job.Source;
-
+            var source = job.SourceKind == DownloadSourceKind.DirectUrl ? await _downloader.DownloadAsync(job, progress, ct) : job.Source;
             job.State = DownloadJobState.Processing; Save();
             var prepared = await _processor.PrepareAsync(source, Path.Combine(job.WorkingDirectory, job.Id), ct);
             job.PreparedPath = prepared.Path; job.State = DownloadJobState.Ready; Save();
             job.State = DownloadJobState.Installing; Save();
             await installAndVerifyAsync(prepared);
             job.State = DownloadJobState.Verifying; Save();
+            // The callback must return only after the destination has been independently verified.
             job.State = DownloadJobState.Completed; job.Error = null; Save();
             if (job.SourceKind == DownloadSourceKind.DirectUrl) TryDelete(source);
-            _processor.GetType();
             ContentProcessor.Cleanup(Path.Combine(job.WorkingDirectory, job.Id), []);
             Save();
         }
