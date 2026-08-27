@@ -1,9 +1,9 @@
 using System.Drawing;
 using MewNX.Core;
+using MewNX.Infrastructure;
 using MewNX.Models;
-using MewSwitchManager.Infrastructure;
 
-namespace MewSwitchManager.UI;
+namespace MewNX.UI;
 
 public sealed partial class MainForm : Form
 {
