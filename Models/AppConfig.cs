@@ -1,4 +1,4 @@
-namespace MewSwitchManager.Models;
+namespace MewNX.Models;
 
 public sealed class AppConfig
 {
