@@ -1,4 +1,4 @@
-namespace MewSwitchManager.Infrastructure;
+namespace MewNX.Infrastructure;
 
 /// <summary>
 /// Central application logger. Every UI-visible message is also persisted so a failed
