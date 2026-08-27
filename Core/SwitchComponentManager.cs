@@ -41,12 +41,7 @@ public sealed class SwitchComponentManager
             var installed = File.Exists(Path.Combine(targetRoot, definition.DetectionPath));
             var installedVersion = installed && _state.LastKnownVersions.TryGetValue(definition.Id.ToString(), out var v) ? v : installed ? "Detected" : "Not installed";
             if (string.IsNullOrWhiteSpace(definition.Repository)) { result.Add(new ComponentStatus(definition, installed, installedVersion, "Managed by Linux workflow", null, false, definition.Description)); continue; }
-            try
-            {
-                var release = await GetReleaseAsync(definition, ct);
-                var updateAvailable = installed && !string.Equals(installedVersion, "Detected", StringComparison.OrdinalIgnoreCase) && CompareVersions(installedVersion, release.TagName) < 0;
-                result.Add(new ComponentStatus(definition, installed, installedVersion, release.TagName, release.HtmlUrl, updateAvailable, release.Name));
-            }
+            try { var release = await GetReleaseAsync(definition, ct); var updateAvailable = installed && !string.Equals(installedVersion, "Detected", StringComparison.OrdinalIgnoreCase) && CompareVersions(installedVersion, release.TagName) < 0; result.Add(new ComponentStatus(definition, installed, installedVersion, release.TagName, release.HtmlUrl, updateAvailable, release.Name)); }
             catch (Exception ex) { _logger.Warn($"Could not query {definition.Name}: {ex.Message}"); result.Add(new ComponentStatus(definition, installed, installedVersion, "Unavailable", null, false, "Release check failed; existing files were not touched.")); }
         }
         _state.LastTargetRoot = targetRoot; _state.UpdatedAt = DateTimeOffset.UtcNow; new JsonStore<ComponentManagerState>(_stateFile).Save(_state); return result;
@@ -59,22 +54,15 @@ public sealed class SwitchComponentManager
         if (!Directory.Exists(targetRoot)) throw new DirectoryNotFoundException(targetRoot);
         var release = await GetReleaseAsync(definition, ct);
         var asset = SelectAsset(definition, release) ?? throw new InvalidOperationException($"No suitable release asset was found for {definition.Name} in {release.TagName}.");
-        var componentCache = Path.Combine(_paths.CacheDirectory, "components", component.ToString());
-        Directory.CreateDirectory(componentCache);
-        var downloadPath = Path.Combine(componentCache, SanitizeFileName(asset.Name));
-        await _releases.DownloadResumableAsync(asset.Url, downloadPath, progress, ct);
-        var partPath = downloadPath + ".part";
-        await VerifyDownloadedFileAsync(partPath, asset.Digest, ct);
-        _releases.PromotePart(downloadPath);
-        var backupRoot = BackupBeforeUpdate(targetRoot, definition, release.TagName);
-        using var transaction = new TransactionalRollback(_paths.CacheDirectory);
-        CaptureManagedArea(transaction, targetRoot, definition);
+        var componentCache = Path.Combine(_paths.CacheDirectory, "components", component.ToString()); Directory.CreateDirectory(componentCache);
+        var downloadPath = Path.Combine(componentCache, SanitizeFileName(asset.Name)); await _releases.DownloadResumableAsync(asset.Url, downloadPath, progress, ct);
+        var partPath = downloadPath + ".part"; await VerifyDownloadedFileAsync(partPath, asset.Digest, ct); _releases.PromotePart(downloadPath);
+        var backupRoot = BackupBeforeUpdate(targetRoot, definition, release.TagName); using var transaction = new TransactionalRollback(_paths.CacheDirectory); CaptureManagedArea(transaction, targetRoot, definition);
         try
         {
             if (component == SwitchComponent.Dbi)
             {
-                var destination = Path.Combine(targetRoot, "switch", "DBI", "DBI.nro"); Directory.CreateDirectory(Path.GetDirectoryName(destination)!); File.Copy(downloadPath, destination, true);
-                if (!File.Exists(destination)) throw new IOException("DBI.nro was not written to the SD card.");
+                var destination = Path.Combine(targetRoot, "switch", "DBI", "DBI.nro"); Directory.CreateDirectory(Path.GetDirectoryName(destination)!); File.Copy(downloadPath, destination, true); if (!File.Exists(destination)) throw new IOException("DBI.nro was not written to the SD card.");
             }
             else
             {
@@ -86,26 +74,22 @@ public sealed class SwitchComponentManager
         }
         catch
         {
-            try { transaction.RollbackOrThrow(); }
-            catch (Exception rollbackEx) { _logger.Error($"Verified transactional rollback failed for {definition.Name}", rollbackEx); }
+            try { transaction.RollbackOrThrow(); } catch (Exception rollbackEx) { _logger.Error($"Verified transactional rollback failed for {definition.Name}", rollbackEx); }
             if (!string.IsNullOrWhiteSpace(backupRoot)) { try { RestoreBackup(targetRoot, backupRoot); } catch (Exception restoreEx) { _logger.Error($"Legacy backup recovery failed for {definition.Name}", restoreEx); } }
             throw;
         }
-        _logger.Info($"{definition.Name} updated to {release.TagName} on {targetRoot}.");
-        return new ComponentStatus(definition, true, release.TagName, release.TagName, release.HtmlUrl, false, "Updated successfully; existing configuration was preserved where files overlapped.");
+        _logger.Info($"{definition.Name} updated to {release.TagName} on {targetRoot}."); return new ComponentStatus(definition, true, release.TagName, release.TagName, release.HtmlUrl, false, "Updated successfully; existing configuration was preserved where files overlapped.");
     }
 
     private static void CaptureManagedArea(TransactionalRollback transaction, string targetRoot, ComponentDefinition definition)
     {
         if (definition.Id == SwitchComponent.Dbi) { transaction.Capture(Path.Combine(targetRoot, "switch", "DBI", "DBI.nro")); return; }
-        var managedRoot = definition.Id switch { SwitchComponent.Hekate => Path.Combine(targetRoot, "bootloader"), SwitchComponent.Atmosphere => Path.Combine(targetRoot, "atmosphere"), _ => targetRoot };
-        transaction.CaptureDirectory(managedRoot);
+        var managedRoot = definition.Id switch { SwitchComponent.Hekate => Path.Combine(targetRoot, "bootloader"), SwitchComponent.Atmosphere => Path.Combine(targetRoot, "atmosphere"), _ => targetRoot }; transaction.CaptureDirectory(managedRoot);
     }
     private Task<GitHubRelease> GetReleaseAsync(ComponentDefinition definition, CancellationToken ct) => definition.Id == SwitchComponent.Dbi ? _releases.GetTagAsync(definition.Repository, "658", ct) : _releases.GetLatestAsync(definition.Repository, ct);
     private static GitHubAsset? SelectAsset(ComponentDefinition definition, GitHubRelease release)
     {
-        var assets = release.Assets.Where(a => a.Size > 0).ToList();
-        if (definition.Id == SwitchComponent.Dbi) return assets.FirstOrDefault(a => string.Equals(a.Name, "DBI.nro", StringComparison.OrdinalIgnoreCase));
+        var assets = release.Assets.Where(a => a.Size > 0).ToList(); if (definition.Id == SwitchComponent.Dbi) return assets.FirstOrDefault(a => string.Equals(a.Name, "DBI.nro", StringComparison.OrdinalIgnoreCase));
         return assets.FirstOrDefault(a => a.Name.EndsWith(definition.ArchiveHint, StringComparison.OrdinalIgnoreCase) && !a.Name.Contains("source", StringComparison.OrdinalIgnoreCase) && !a.Name.Contains("src", StringComparison.OrdinalIgnoreCase));
     }
     private static int CompareVersions(string installed, string available)
@@ -115,9 +99,7 @@ public sealed class SwitchComponentManager
     private static List<int> ExtractNumbers(string value) => System.Text.RegularExpressions.Regex.Matches(value, @"\d+").Select(m => int.TryParse(m.Value, out var n) ? n : 0).ToList();
     private static async Task VerifyDownloadedFileAsync(string path, string? digest, CancellationToken ct)
     {
-        if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new InvalidDataException("Downloaded component is empty or missing.");
-        if (string.IsNullOrWhiteSpace(digest)) return;
-        if (!digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"Unsupported release digest format: {digest}");
+        if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new InvalidDataException("Downloaded component is empty or missing."); if (string.IsNullOrWhiteSpace(digest)) return; if (!digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"Unsupported release digest format: {digest}");
         var expected = digest[7..].Trim().ToUpperInvariant(); await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan); using var sha = SHA256.Create(); var actual = Convert.ToHexString(await sha.ComputeHashAsync(stream, ct));
         if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(actual), System.Text.Encoding.ASCII.GetBytes(expected))) throw new InvalidDataException($"Component SHA-256 verification failed. Expected {expected}, got {actual}.");
     }
@@ -128,7 +110,10 @@ public sealed class SwitchComponentManager
     }
     private static string FindPayloadRoot(string stage, string detectionPath)
     {
-        if (File.Exists(Path.Combine(stage, detectionPath))) return stage; foreach (var directory in Directory.EnumerateDirectories(stage, "*", SearchOption.AllDirectories)) if (File.Exists(Path.Combine(directory, detectionPath))) return directory); throw new InvalidDataException($"Archive does not contain expected component path: {detectionPath}");
+        if (File.Exists(Path.Combine(stage, detectionPath))) return stage;
+        foreach (var directory in Directory.EnumerateDirectories(stage, "*", SearchOption.AllDirectories))
+            if (File.Exists(Path.Combine(directory, detectionPath))) return directory;
+        throw new InvalidDataException($"Archive does not contain expected component path: {detectionPath}");
     }
     private static string BackupBeforeUpdate(string targetRoot, ComponentDefinition definition, string version)
     {
