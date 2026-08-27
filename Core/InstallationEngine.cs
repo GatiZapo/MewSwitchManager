@@ -20,6 +20,8 @@ public sealed class InstallationEngine
     private readonly AppConfig _config;
 
     public AppState State => _state;
+    public AppPaths Paths { get; }
+    public AppConfig Config => _config;
     public IReadOnlyList<DiskInfo> Disks { get; private set; } = [];
     public bool WslReady { get; private set; }
     public bool RcmConnected { get; private set; }
@@ -28,6 +30,7 @@ public sealed class InstallationEngine
 
     public InstallationEngine(AppPaths paths, AppConfig config, AppLogger logger)
     {
+        Paths = paths;
         _state = new JsonStore<AppState>(paths.StateFile).LoadOrCreate();
         _state.EnsureStages();
         _state.ReconcilePersistedProgress();
@@ -75,11 +78,7 @@ public sealed class InstallationEngine
     public bool IsSelectedDiskSafe() => _safety.IsSafeTarget(Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber));
     public string SelectedDiskSafetyText() => _safety.Explain(Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber));
 
-    public void SaveAutoPlan(AutoPlan plan)
-    {
-        _state.AutoPlan = plan;
-        Persist();
-    }
+    public void SaveAutoPlan(AutoPlan plan) { _state.AutoPlan = plan; Persist(); }
 
     public async Task PreflightAsync(CancellationToken ct = default)
     {
@@ -97,34 +96,19 @@ public sealed class InstallationEngine
 
     public async Task DownloadAndVerifyLinuxAsync(IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
-        _state.LinuxDownloaded = false;
-        _state.LinuxVerified = false;
-        SetStage(InstallationStage.LinuxImage, StageState.Running, "Downloading Linux image.");
-        Persist();
+        _state.LinuxDownloaded = false; _state.LinuxVerified = false;
+        SetStage(InstallationStage.LinuxImage, StageState.Running, "Downloading Linux image."); Persist();
         try
         {
             await _linux.DownloadAsync(_cache, progress, ct);
             var ok = await _linux.VerifySha1Async(_linux.FinalPath(_cache), ct);
             if (!ok) throw new InvalidDataException("Linux image SHA-1 verification failed.");
-            _state.LinuxDownloaded = true;
-            _state.LinuxVerified = true;
+            _state.LinuxDownloaded = true; _state.LinuxVerified = true;
             SetStage(InstallationStage.LinuxImage, StageState.Completed, "Image verified successfully.");
-            _state.CurrentStage = InstallationStage.UsbStoragePreparation;
-            Persist();
+            _state.CurrentStage = InstallationStage.UsbStoragePreparation; Persist();
         }
-        catch (OperationCanceledException)
-        {
-            SetStage(InstallationStage.LinuxImage, StageState.WaitingForUser, "Download cancelled. Existing partial data was preserved for resumption.");
-            Persist();
-            throw;
-        }
-        catch (Exception ex)
-        {
-            SetStage(InstallationStage.LinuxImage, StageState.Failed, ex.Message);
-            Persist();
-            _logger.Error("Linux image download/verification failed", ex);
-            throw;
-        }
+        catch (OperationCanceledException) { SetStage(InstallationStage.LinuxImage, StageState.WaitingForUser, "Download cancelled. Existing partial data was preserved for resumption."); Persist(); throw; }
+        catch (Exception ex) { SetStage(InstallationStage.LinuxImage, StageState.Failed, ex.Message); Persist(); _logger.Error("Linux image download/verification failed", ex); throw; }
     }
 
     public async Task PrepareUsbAsync(IProgress<DownloadProgress>? progress, CancellationToken ct = default)
@@ -135,61 +119,21 @@ public sealed class InstallationEngine
         var current = await _disks.GetDiskAsync(_state.SelectedDiskNumber, ct);
         _safety.DemandStableIdentity(selected!, current!);
         if (!_state.LinuxVerified) throw new InvalidOperationException("The Linux image must be verified before writing the USB target.");
-        if (!await _linux.VerifyExistingAsync(_cache, ct))
-        {
-            _state.LinuxDownloaded = false;
-            _state.LinuxVerified = false;
-            Persist();
-            throw new InvalidDataException("The cached Linux image is missing, incomplete or failed verification. Download it again before writing the USB.");
-        }
-        SetStage(InstallationStage.UsbStoragePreparation, StageState.Running, "Preparing USB target and flashing Linux image.");
-        _state.CurrentStage = InstallationStage.UsbStoragePreparation;
-        Persist();
-        var archive = _linux.FinalPath(_cache);
-        var work = Path.Combine(_cache, "usb-work");
-        await _usb.PrepareAndFlashAsync(current!, archive, work, progress, ct);
-        SetStage(InstallationStage.UsbStoragePreparation, StageState.Completed, "Linux image flashed to USB successfully.");
-        _state.CurrentStage = InstallationStage.HekateSd;
-        Persist();
+        if (!await _linux.VerifyExistingAsync(_cache, ct)) { _state.LinuxDownloaded = false; _state.LinuxVerified = false; Persist(); throw new InvalidDataException("The cached Linux image is missing, incomplete or failed verification. Download it again before writing the USB."); }
+        SetStage(InstallationStage.UsbStoragePreparation, StageState.Running, "Preparing USB target and flashing Linux image."); _state.CurrentStage = InstallationStage.UsbStoragePreparation; Persist();
+        await _usb.PrepareAndFlashAsync(current!, _linux.FinalPath(_cache), Path.Combine(_cache, "usb-work"), progress, ct);
+        SetStage(InstallationStage.UsbStoragePreparation, StageState.Completed, "Linux image flashed to USB successfully."); _state.CurrentStage = InstallationStage.HekateSd; Persist();
     }
 
-    public void PauseForHardware()
-    {
-        SetStage(InstallationStage.UsbStoragePreparation, StageState.WaitingForUser, "Waiting for physical hardware procedure.");
-        _state.CurrentStage = InstallationStage.UsbStoragePreparation;
-        Persist();
-    }
+    public void PauseForHardware() { SetStage(InstallationStage.UsbStoragePreparation, StageState.WaitingForUser, "Waiting for physical hardware procedure."); _state.CurrentStage = InstallationStage.UsbStoragePreparation; Persist(); }
 
     private void SetStage(InstallationStage stage, StageState status, string message)
     {
-        _state.EnsureStages();
-        var record = _state.Stages.First(x => x.Stage == stage);
-        record.State = status;
-        record.Message = message;
-        if (status == StageState.Completed) record.CompletedAt = DateTimeOffset.UtcNow;
-        _state.UpdatedAt = DateTimeOffset.UtcNow;
+        _state.EnsureStages(); var record = _state.Stages.First(x => x.Stage == stage); record.State = status; record.Message = message;
+        if (status == StageState.Completed) record.CompletedAt = DateTimeOffset.UtcNow; _state.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    private void Persist()
-    {
-        _state.UpdatedAt = DateTimeOffset.UtcNow;
-        _store.Save(_state);
-        StateChanged?.Invoke();
-    }
-
-    public void FailCurrentStage(string message)
-    {
-        var stage = _state.CurrentStage;
-        if (stage == InstallationStage.Completed) return;
-        SetStage(stage, StageState.Failed, message);
-        Persist();
-    }
-
-    public void WarnCurrentStage(string message)
-    {
-        var stage = _state.CurrentStage;
-        if (stage == InstallationStage.Completed) return;
-        SetStage(stage, StageState.Warning, message);
-        Persist();
-    }
+    private void Persist() { _state.UpdatedAt = DateTimeOffset.UtcNow; _store.Save(_state); StateChanged?.Invoke(); }
+    public void FailCurrentStage(string message) { var stage = _state.CurrentStage; if (stage == InstallationStage.Completed) return; SetStage(stage, StageState.Failed, message); Persist(); }
+    public void WarnCurrentStage(string message) { var stage = _state.CurrentStage; if (stage == InstallationStage.Completed) return; SetStage(stage, StageState.Warning, message); Persist(); }
 }
