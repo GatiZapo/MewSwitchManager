@@ -1,7 +1,7 @@
 using System.Drawing;
-using MewSwitchManager.Core;
+using MewNX.Core;
+using MewNX.Models;
 using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
 
 namespace MewSwitchManager.UI;
 
@@ -12,7 +12,6 @@ public sealed partial class MainForm : Form
     private readonly AppConfig _config;
     private readonly AppPaths _paths;
     private readonly UpdateService _updateService;
-
     private readonly NeonProgressBar _progress = new();
     private readonly StatusCard _rcm = new() { Heading = "SWITCH / RCM" };
     private readonly StatusCard _wsl = new() { Heading = "WINDOWS / WSL" };
@@ -46,7 +45,6 @@ public sealed partial class MainForm : Form
         _logger = logger;
         _config = config;
         _updateService = new UpdateService(logger);
-
         Text = "MewNX — Advanced Nintendo Switch Toolkit";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(900, 650);
@@ -58,10 +56,8 @@ public sealed partial class MainForm : Form
         Font = Theme.UI(9.5f);
         KeyPreview = true;
         DoubleBuffered = true;
-
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch (Exception ex) { logger.Warn($"Could not load MewNX window icon: {ex.Message}"); }
-
         BuildUi();
         InitializeManagerCenter(_paths);
         InitializeExperience(_paths);
@@ -73,7 +69,6 @@ public sealed partial class MainForm : Form
         InitializeAioShell();
         ApplyVisualPolish();
         EnableDarkTitleBar();
-
         _logger.Message += Logger_Message;
         _engine.StateChanged += Engine_StateChanged;
         Resize += (_, _) => ApplyResponsiveLayout();
