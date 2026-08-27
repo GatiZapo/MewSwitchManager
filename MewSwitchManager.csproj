@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MewNX</AssemblyName>
-    <RootNamespace>MewSwitchManager</RootNamespace>
+    <RootNamespace>MewNX</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>assets\MewNX.ico</ApplicationIcon>
     <Platforms>AnyCPU;x86;x64;ARM64</Platforms>
@@ -27,13 +27,11 @@
     <DebugSymbols>true</DebugSymbols>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
-
   <ItemGroup>
     <Compile Remove="Tests\**" />
     <EmbeddedResource Remove="Tests\**" />
     <None Remove="Tests\**" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="SharpCompress" Version="0.50.4" />
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
