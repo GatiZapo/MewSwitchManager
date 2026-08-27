@@ -1,7 +1,7 @@
 using System.Text.Json;
-using MewSwitchManager.Infrastructure;
+using MewNX.Infrastructure;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
 public sealed record EmummcInfo(bool Present, string Type, string? Id, string? Sector, string Message);
 
@@ -27,7 +27,7 @@ public sealed class EmummcManager
         if (!Directory.Exists(source)) throw new DirectoryNotFoundException("emuMMC directory not found.");
         Directory.CreateDirectory(destination);
         CopyDirectory(source, Path.Combine(destination, "emuMMC"));
-        File.WriteAllText(Path.Combine(destination, "backup-info.json"), JsonSerializer.Serialize(new { createdUtc = DateTimeOffset.UtcNow, source = source, kind = "file-based-emummc-metadata-and-files" }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(Path.Combine(destination, "backup-info.json"), JsonSerializer.Serialize(new { createdUtc = DateTimeOffset.UtcNow, source, kind = "file-based-emummc-metadata-and-files" }, new JsonSerializerOptions { WriteIndented = true }));
         _logger.Info($"File-based emuMMC backup created: {destination}");
         return destination;
     }
