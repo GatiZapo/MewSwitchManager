@@ -5,81 +5,50 @@ namespace MewNX.Core;
 /// <summary>Compares persisted expectations with the actual target filesystem.</summary>
 public sealed class StateReconciliationService
 {
-    public ReconciliationResult Reconcile(
-        IEnumerable<string> expectedRelativePaths,
-        string root)
+    public ReconciliationResult Reconcile(IEnumerable<string> expectedRelativePaths, string root)
     {
         ArgumentNullException.ThrowIfNull(expectedRelativePaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
-
-        if (!Directory.Exists(root))
-            return Unavailable();
+        if (!Directory.Exists(root)) return Unavailable();
 
         var missing = new List<string>();
         var invalid = new List<string>();
         var rootFull = NormalizeRoot(root);
-
         foreach (var relative in expectedRelativePaths.Where(static p => !string.IsNullOrWhiteSpace(p)))
         {
-            if (!TryResolveInsideRoot(rootFull, relative, out var full))
-            {
-                invalid.Add(relative);
-                continue;
-            }
-
-            if (!File.Exists(full))
-                missing.Add(full);
-            else if (new FileInfo(full).Length == 0)
-                invalid.Add(full);
+            if (!TryResolveInsideRoot(rootFull, relative, out var full)) { invalid.Add(relative); continue; }
+            if (!File.Exists(full)) missing.Add(full);
+            else if (new FileInfo(full).Length == 0) invalid.Add(full);
         }
-
-        return CreateResult(missing, invalid,
-            "{0} missing and {1} invalid expected file(s).");
+        return CreateResult(missing, invalid, (m, i) => $"{m} missing and {i} invalid expected file(s).");
     }
 
     public async Task<ReconciliationResult> ReconcileHashesAsync(
-        IReadOnlyDictionary<string, string> expectedSha256,
-        string root,
-        CancellationToken ct = default)
+        IReadOnlyDictionary<string, string> expectedSha256, string root, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(expectedSha256);
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
-
-        if (!Directory.Exists(root))
-            return Unavailable();
+        if (!Directory.Exists(root)) return Unavailable();
 
         var missing = new List<string>();
         var invalid = new List<string>();
         var rootFull = NormalizeRoot(root);
-
         foreach (var pair in expectedSha256)
         {
             ct.ThrowIfCancellationRequested();
             if (!TryResolveInsideRoot(rootFull, pair.Key, out var full) || string.IsNullOrWhiteSpace(pair.Value))
-            {
-                invalid.Add(pair.Key);
-                continue;
-            }
-
-            if (!File.Exists(full))
-            {
-                missing.Add(full);
-                continue;
-            }
+            { invalid.Add(pair.Key); continue; }
+            if (!File.Exists(full)) { missing.Add(full); continue; }
 
             await using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, true);
             var actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false));
-            if (!string.Equals(actual, pair.Value.Trim(), StringComparison.OrdinalIgnoreCase))
-                invalid.Add(full);
+            if (!string.Equals(actual, pair.Value.Trim(), StringComparison.OrdinalIgnoreCase)) invalid.Add(full);
         }
-
-        return CreateResult(missing, invalid,
-            "One or more expected files failed integrity checks.");
+        return CreateResult(missing, invalid, static (_, _) => "One or more expected files failed integrity checks.");
     }
 
     private static string NormalizeRoot(string root)
-        => Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-           + Path.DirectorySeparatorChar;
+        => Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
     private static bool TryResolveInsideRoot(string rootFull, string relative, out string full)
     {
@@ -90,15 +59,10 @@ public sealed class StateReconciliationService
     }
 
     private static ReconciliationResult CreateResult(
-        List<string> missing,
-        List<string> invalid,
-        string message)
+        List<string> missing, List<string> invalid, Func<int, int, string> messageFactory)
     {
         var consistent = missing.Count == 0 && invalid.Count == 0;
-        return new(consistent, missing, invalid,
-            consistent ? null : message.Contains("{0}", StringComparison.Ordinal)
-                ? string.Format(message, missing.Count, invalid.Count)
-                : message);
+        return new(consistent, missing, invalid, consistent ? null : messageFactory(missing.Count, invalid.Count));
     }
 
     private static ReconciliationResult Unavailable()
@@ -106,7 +70,4 @@ public sealed class StateReconciliationService
 }
 
 public sealed record ReconciliationResult(
-    bool IsConsistent,
-    IReadOnlyList<string> MissingPaths,
-    IReadOnlyList<string> InvalidPaths,
-    string? Message);
+    bool IsConsistent, IReadOnlyList<string> MissingPaths, IReadOnlyList<string> InvalidPaths, string? Message);
