@@ -1,6 +1,6 @@
-using MewSwitchManager.Infrastructure;
+using MewNX.Infrastructure;
 
-namespace MewSwitchManager.Hardware;
+namespace MewNX.Hardware;
 
 public sealed record RcmStatus(bool Connected, string DeviceId, string Message);
 
@@ -38,6 +38,6 @@ public sealed class RcmService
         "2. Use the appropriate RCM method for your hardware (for an unpatched Erista, the RCM button/jig method).\n" +
         "3. Hold the required volume button while pressing Power.\n" +
         "4. Connect USB and press REFRESH.\n\n" +
-        "MewSwitch cannot safely force a normal retail Switch into RCM over USB. A payload sender only works after the console is already exposing the RCM USB device.\n\n" +
+        "MewNX cannot safely force a normal retail Switch into RCM over USB. A payload sender only works after the console is already exposing the RCM USB device.\n\n" +
         "AutoRCM can make future boots enter RCM, but changing boot0 is a separate, high-risk operation and is deliberately not performed automatically by the manager.";
 }
