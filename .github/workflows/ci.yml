@@ -20,14 +20,14 @@ jobs:
         with:
           dotnet-version: 8.x
       - name: Restore application
-        run: dotnet restore MewSwitchManager.csproj
+        run: dotnet restore MewNX.csproj
       - name: Restore tests
-        run: dotnet restore Tests/MewSwitchManager.Tests.csproj
+        run: dotnet restore Tests/MewNX.Tests.csproj
       - name: Build application
-        run: dotnet build MewSwitchManager.csproj --configuration Release --no-restore --nologo
+        run: dotnet build MewNX.csproj --configuration Release --no-restore --nologo -warnaserror
       - name: Build tests
-        run: dotnet build Tests/MewSwitchManager.Tests.csproj --configuration Release --no-restore --nologo -warnaserror
+        run: dotnet build Tests/MewNX.Tests.csproj --configuration Release --no-restore --nologo -warnaserror
       - name: Run regression tests
-        run: dotnet test Tests/MewSwitchManager.Tests.csproj --configuration Release --no-build --no-restore --verbosity normal --nologo
+        run: dotnet test Tests/MewNX.Tests.csproj --configuration Release --no-build --no-restore --verbosity normal --nologo
       - name: Publish ${{ matrix.rid }}
-        run: dotnet publish MewSwitchManager.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained true --no-restore --nologo
+        run: dotnet publish MewNX.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained true --no-restore --nologo
