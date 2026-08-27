@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-27T00:00:00Z",
+  "components": [
+    {
+      "id": "hekate",
+      "name": "Hekate / Nyx",
+      "channel": "stable",
+      "currentVersion": null,
+      "latestVersion": null,
+      "supportedVersion": null,
+      "dependencies": [],
+      "conflicts": [],
+      "releaseUrl": "https://github.com/CTCaer/hekate",
+      "sha256": null,
+      "assetName": null
+    },
+    {
+      "id": "atmosphere",
+      "name": "Atmosphère",
+      "channel": "stable",
+      "currentVersion": null,
+      "latestVersion": null,
+      "supportedVersion": null,
+      "dependencies": [],
+      "conflicts": [],
+      "releaseUrl": "https://github.com/Atmosphere-NX/Atmosphere",
+      "sha256": null,
+      "assetName": null
+    },
+    {
+      "id": "dbi",
+      "name": "DBI",
+      "channel": "stable",
+      "currentVersion": null,
+      "latestVersion": null,
+      "supportedVersion": null,
+      "dependencies": [],
+      "conflicts": [],
+      "releaseUrl": "https://github.com/rashevskyv/dbi",
+      "sha256": null,
+      "assetName": "DBI.nro"
+    }
+  ]
+}
