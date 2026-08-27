@@ -61,6 +61,13 @@ public sealed class SystemDiagnostics
             ? new("rcm", "RCM device", DiagnosticSeverity.Pass, "Nintendo Switch RCM/APX device detected.")
             : new("rcm", "RCM device", DiagnosticSeverity.Warning, "RCM/APX device is not currently connected. Check USB cable/port and driver when the Switch is in RCM."));
 
+        var catalogPath = Path.Combine(AppContext.BaseDirectory, "Models", "MewNxManifest.json");
+        if (!File.Exists(catalogPath)) catalogPath = Path.Combine(AppContext.BaseDirectory, "MewNxManifest.json");
+        var catalog = new ComponentCatalogService().Load(catalogPath);
+        checks.Add(catalog.IsValid
+            ? new("catalog", "Component catalog", DiagnosticSeverity.Pass, $"Schema {catalog.SchemaVersion} • {catalog.Components.Count} components • dependency references valid.")
+            : new("catalog", "Component catalog", DiagnosticSeverity.Fail, string.Join(" | ", catalog.Errors)));
+
         var drives = new RemovableDriveService().Scan();
         var sd = drives.Select(d => SafeInspect(d.Root)).FirstOrDefault(x => x?.LooksLikeSwitchSd == true);
         if (sd is null)
