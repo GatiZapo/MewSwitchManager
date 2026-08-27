@@ -17,6 +17,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MewSwitchManager.csproj" />
+    <ProjectReference Include="..\MewNX.csproj" />
   </ItemGroup>
 </Project>
