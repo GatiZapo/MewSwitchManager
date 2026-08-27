@@ -1,7 +1,7 @@
 using System.Text.Json;
-using MewSwitchManager.Infrastructure;
+using MewNX.Infrastructure;
 
-namespace MewSwitchManager.Hardware;
+namespace MewNX.Hardware;
 
 public sealed class SystemProbe(ProcessRunner runner, AppLogger logger)
 {
