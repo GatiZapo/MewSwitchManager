@@ -6,114 +6,51 @@ namespace MewSwitchManager.Tests;
 
 public sealed class DependencyAndRollbackTests
 {
-    [Fact]
-    public void SemVerOrdersPrereleaseBeforeRelease()
+    [Fact] public void SemVerOrdersPrereleaseBeforeRelease() { Assert.True(VersionConstraintParser.Compare("1.2.3-beta.2", "1.2.3") < 0); Assert.True(VersionConstraintParser.Compare("1.2.3-beta.2", "1.2.3-beta.10") < 0); Assert.Equal(0, VersionConstraintParser.Compare("v1.2.3+build.42", "1.2.3+other")); }
+    [Fact] public void VersionConstraintHonoursInclusiveAndExclusiveBounds()
     {
-        Assert.True(VersionConstraintParser.Compare("1.2.3-beta.2", "1.2.3") < 0);
-        Assert.True(VersionConstraintParser.Compare("1.2.3-beta.2", "1.2.3-beta.10") < 0);
-        Assert.Equal(0, VersionConstraintParser.Compare("v1.2.3+build.42", "1.2.3+other"));
+        var inclusive = new VersionConstraint(Minimum: "1.0.0", Maximum: "2.0.0"); var exclusive = new VersionConstraint(Minimum: "1.0.0", MinimumInclusive: false, Maximum: "2.0.0", MaximumInclusive: false);
+        Assert.True(inclusive.Allows("1.0.0")); Assert.True(inclusive.Allows("2.0.0")); Assert.False(exclusive.Allows("1.0.0")); Assert.False(exclusive.Allows("2.0.0")); Assert.True(exclusive.Allows("1.5.0"));
     }
-
-    [Fact]
-    public void VersionConstraintHonoursInclusiveAndExclusiveBounds()
+    [Fact] public void DependencyPlanOrdersDependenciesBeforeRequestedComponent()
     {
-        var inclusive = new VersionConstraint(Minimum: "1.0.0", Maximum: "2.0.0");
-        var exclusive = new VersionConstraint(Minimum: "1.0.0", MinimumInclusive: false, Maximum: "2.0.0", MaximumInclusive: false);
-
-        Assert.True(inclusive.Allows("1.0.0"));
-        Assert.True(inclusive.Allows("2.0.0"));
-        Assert.False(exclusive.Allows("1.0.0"));
-        Assert.False(exclusive.Allows("2.0.0"));
-        Assert.True(exclusive.Allows("1.5.0"));
-    }
-
-    [Fact]
-    public void DependencyPlanOrdersDependenciesBeforeRequestedComponent()
-    {
-        var manifest = new[]
-        {
-            new ComponentManifestEntry("hekate", "Hekate", "stable", []),
-            new ComponentManifestEntry("atmosphere", "Atmosphere", "stable", ["hekate"]),
-            new ComponentManifestEntry("tesla", "Tesla", "stable", ["atmosphere"])
-        };
-
+        var manifest = new[] { new ComponentManifestEntry("hekate", "Hekate", "stable", []), new ComponentManifestEntry("atmosphere", "Atmosphere", "stable", ["hekate"]), new ComponentManifestEntry("tesla", "Tesla", "stable", ["atmosphere"]) };
         var plan = new DependencyManager().BuildPlan(manifest, ["tesla"], new Dictionary<string, string>());
-
-        Assert.Equal(new[] { "hekate", "atmosphere", "tesla" }, plan.InstallOrder);
-        Assert.Empty(plan.Missing);
-        Assert.Empty(plan.Cycles);
+        Assert.Equal(new[] { "hekate", "atmosphere", "tesla" }, plan.InstallOrder); Assert.Empty(plan.Missing); Assert.Empty(plan.Cycles); Assert.Empty(plan.Incompatible);
     }
-
-    [Fact]
-    public void DependencyPlanDetectsMissingDependenciesAndCycles()
+    [Fact] public void DependencyPlanBlocksParentWhenDependencyIsMissing()
     {
-        var manifest = new[]
+        var manifest = new[] { new ComponentManifestEntry("tesla", "Tesla", "stable", ["nx-ovlloader"]) }; var plan = new DependencyManager().BuildPlan(manifest, ["tesla"], new Dictionary<string, string>());
+        Assert.Contains("nx-ovlloader", plan.Missing); Assert.DoesNotContain("tesla", plan.InstallOrder);
+    }
+    [Fact] public void DependencyPlanBlocksParentWhenDependencyIsIncompatible()
+    {
+        var manifest = new[] { new ComponentManifestEntry("nx-ovlloader", "nx-ovlloader", "stable", [], new VersionConstraint(Minimum: "2.0.0")), new ComponentManifestEntry("tesla", "Tesla", "stable", ["nx-ovlloader"]) };
+        var installed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["nx-ovlloader"] = "1.5.0" }; var plan = new DependencyManager().BuildPlan(manifest, ["tesla"], installed);
+        Assert.Contains("nx-ovlloader", plan.Incompatible); Assert.DoesNotContain("tesla", plan.InstallOrder);
+    }
+    [Fact] public void DependencyPlanDoesNotInstallCycleMembers()
+    {
+        var manifest = new[] { new ComponentManifestEntry("a", "A", "stable", ["b"]), new ComponentManifestEntry("b", "B", "stable", ["a"]) }; var plan = new DependencyManager().BuildPlan(manifest, ["a"], new Dictionary<string, string>());
+        Assert.Contains("a", plan.Cycles); Assert.Empty(plan.InstallOrder);
+    }
+    [Fact] public void TransactionRollbackRestoresExistingAndRemovesNewFiles()
+    {
+        var root = CreateTempDirectory(); try
         {
-            new ComponentManifestEntry("a", "A", "stable", ["missing"]),
-            new ComponentManifestEntry("b", "B", "stable", ["c"]),
-            new ComponentManifestEntry("c", "C", "stable", ["b"])
-        };
-
-        var plan = new DependencyManager().BuildPlan(manifest, ["a", "b"], new Dictionary<string, string>());
-
-        Assert.Contains("missing", plan.Missing);
-        Assert.Contains("b", plan.Cycles);
+            var component = Path.Combine(root, "component"); Directory.CreateDirectory(component); File.WriteAllText(Path.Combine(component, "existing.txt"), "before"); RollbackResult result;
+            using (var transaction = new TransactionalRollback(root)) { transaction.CaptureDirectory(component); File.WriteAllText(Path.Combine(component, "existing.txt"), "after"); File.WriteAllText(Path.Combine(component, "new.txt"), "created"); Directory.CreateDirectory(Path.Combine(component, "new-folder")); File.WriteAllText(Path.Combine(component, "new-folder", "nested.txt"), "nested"); result = transaction.Rollback(); }
+            Assert.True(result.Success, string.Join(" | ", result.Errors)); Assert.Equal("before", File.ReadAllText(Path.Combine(component, "existing.txt"))); Assert.False(File.Exists(Path.Combine(component, "new.txt"))); Assert.False(Directory.Exists(Path.Combine(component, "new-folder")));
+        } finally { TryDelete(root); }
     }
-
-    [Fact]
-    public void TransactionRollbackRestoresExistingAndRemovesNewFiles()
+    [Fact] public void TransactionRollbackRemovesDirectoryCreatedAfterCapture()
     {
-        var root = CreateTempDirectory();
-        try
-        {
-            var component = Path.Combine(root, "component");
-            Directory.CreateDirectory(component);
-            File.WriteAllText(Path.Combine(component, "existing.txt"), "before");
-
-            using (var transaction = new TransactionalRollback(root))
-            {
-                transaction.CaptureDirectory(component);
-                File.WriteAllText(Path.Combine(component, "existing.txt"), "after");
-                File.WriteAllText(Path.Combine(component, "new.txt"), "created");
-                Directory.CreateDirectory(Path.Combine(component, "new-folder"));
-                File.WriteAllText(Path.Combine(component, "new-folder", "nested.txt"), "nested");
-            }
-
-            Assert.Equal("before", File.ReadAllText(Path.Combine(component, "existing.txt")));
-            Assert.False(File.Exists(Path.Combine(component, "new.txt")));
-            Assert.False(Directory.Exists(Path.Combine(component, "new-folder")));
-        }
-        finally { TryDelete(root); }
+        var root = CreateTempDirectory(); try { var component = Path.Combine(root, "new-component"); using (var transaction = new TransactionalRollback(root)) { transaction.CaptureDirectory(component); Directory.CreateDirectory(component); File.WriteAllText(Path.Combine(component, "created.txt"), "created"); } Assert.False(Directory.Exists(component)); } finally { TryDelete(root); }
     }
-
-    [Fact]
-    public void TransactionRollbackRemovesDirectoryCreatedAfterCapture()
+    [Fact] public void TransactionCommitPreservesChanges()
     {
-        var root = CreateTempDirectory();
-        try
-        {
-            var component = Path.Combine(root, "new-component");
-            using (var transaction = new TransactionalRollback(root))
-            {
-                transaction.CaptureDirectory(component);
-                Directory.CreateDirectory(component);
-                File.WriteAllText(Path.Combine(component, "created.txt"), "created");
-            }
-
-            Assert.False(Directory.Exists(component));
-        }
-        finally { TryDelete(root); }
+        var root = CreateTempDirectory(); try { var component = Path.Combine(root, "component"); Directory.CreateDirectory(component); var file = Path.Combine(component, "state.txt"); File.WriteAllText(file, "before"); using (var transaction = new TransactionalRollback(root)) { transaction.CaptureDirectory(component); File.WriteAllText(file, "after"); transaction.Commit(); } Assert.Equal("after", File.ReadAllText(file)); } finally { TryDelete(root); }
     }
-
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), "MewNX-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void TryDelete(string path)
-    {
-        try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
-    }
+    private static string CreateTempDirectory() { var path = Path.Combine(Path.GetTempPath(), "MewNX-tests", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path); return path; }
+    private static void TryDelete(string path) { try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } }
 }
