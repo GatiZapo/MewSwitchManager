@@ -22,6 +22,7 @@ public sealed class ContentProcessor
             if (Directory.Exists(extract)) Directory.Delete(extract, true);
             Directory.CreateDirectory(extract);
             await Task.Run(() => ExtractArchive(input, extract), ct);
+            ct.ThrowIfCancellationRequested();
             var payload = ResumableDownloadService.FindPreparedPayload(extract);
             if (payload is null) throw new InvalidDataException("Archive did not contain a supported Switch payload/content file.");
             var info = new FileInfo(payload);
@@ -39,8 +40,19 @@ public sealed class ContentProcessor
             ZipFile.ExtractToDirectory(input, destination, overwriteFiles: true);
             return;
         }
+
+        var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         using var archive = ArchiveFactory.OpenArchive(input);
-        archive.WriteToDirectory(destination, new ExtractionOptions { ExtractFullPath = true, Overwrite = true, CheckCrc = true });
+        foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
+        {
+            if (string.IsNullOrWhiteSpace(entry.Key)) throw new InvalidDataException("Archive contains an entry without a path.");
+            var relative = entry.Key.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var full = Path.GetFullPath(Path.Combine(destination, relative));
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Archive contains an unsafe path outside the extraction directory.");
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            entry.WriteToFile(full, new ExtractionOptions { ExtractFullPath = false, Overwrite = true, CheckCrc = true });
+        }
     }
 
     public static void Cleanup(string workingDirectory, IEnumerable<string> keepPaths)
