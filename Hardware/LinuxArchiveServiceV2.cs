@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using SharpCompress.Archives;
 using SharpCompress.Archives.SevenZip;
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Infrastructure;
+using MewNX.Models;
 
-namespace MewSwitchManager.Hardware;
+namespace MewNX.Hardware;
 
 /// <summary>
 /// Extracts the Linux distribution archive and resolves the raw image used by the USB writer.
@@ -22,21 +22,11 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
         RecreateDirectory(extractDirectory);
         try
         {
-            // Archive extraction is CPU/IO heavy and must never run on the WinForms UI thread.
             await Task.Run(() => ExtractArchive(archivePath, extractDirectory, progress, ct), ct);
-
-            // IMPORTANT: Directory.EnumerateFiles can take a long time on a large extracted
-            // Linux tree (and can be slowed further by Windows Defender). Running it directly
-            // after the first await would execute synchronously on the UI context and make
-            // the progress bar appear frozen at its last extraction percentage (historically 95%).
             progress?.Report(new DownloadProgress(0, 1, 0, null, "BUILDING LINUX IMAGE", "Scanning extracted files for the Linux image..."));
             return await Task.Run(() => ResolveRawImageAsync(extractDirectory, progress, ct), ct);
         }
-        catch
-        {
-            TryDeleteDirectory(extractDirectory);
-            throw;
-        }
+        catch { TryDeleteDirectory(extractDirectory); throw; }
     }
 
     public void Cleanup(string workDirectory) => TryDeleteDirectory(Path.Combine(workDirectory, "linux-extracted"));
@@ -52,21 +42,14 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
         long completedBytes = 0;
         var completedEntries = 0;
         var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-
         Report(progress, 0, totalBytes > 0 ? totalBytes : totalEntries, "EXTRACTING LINUX IMAGE", "Opening archive...");
-
         foreach (var entry in entries)
         {
             ct.ThrowIfCancellationRequested();
             var key = entry.Key ?? string.Empty;
             if (string.IsNullOrWhiteSpace(key)) continue;
             var outputPath = SafeOutputPath(destination, root, key);
-            if (entry.IsDirectory)
-            {
-                Directory.CreateDirectory(outputPath);
-                continue;
-            }
-
+            if (entry.IsDirectory) { Directory.CreateDirectory(outputPath); continue; }
             var parent = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrWhiteSpace(parent)) Directory.CreateDirectory(parent);
             var temporaryPath = outputPath + $".{Guid.NewGuid():N}.mewtmp";
@@ -77,7 +60,6 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
                     var current = completedBytes + written;
                     Report(progress, totalBytes > 0 ? Math.Min(current, totalBytes) : completedEntries, totalBytes > 0 ? totalBytes : totalEntries, "EXTRACTING LINUX IMAGE", $"Extracting {Path.GetFileName(key)}");
                 });
-
                 entry.WriteTo(output);
                 output.Flush();
                 MoveWithRetry(temporaryPath, outputPath, ct);
@@ -87,7 +69,6 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
             }
             finally { TryDeleteFile(temporaryPath); }
         }
-
         Report(progress, totalBytes > 0 ? totalBytes : totalEntries, totalBytes > 0 ? totalBytes : totalEntries, "FINALIZING LINUX IMAGE", "Extraction complete. Finalizing files...");
         logger.Info("Linux archive extraction completed.");
     }
@@ -108,17 +89,8 @@ public sealed class LinuxArchiveServiceV2(AppLogger logger)
         ct.ThrowIfCancellationRequested();
         Report(progress, 0, 1, "BUILDING LINUX IMAGE", "Locating Linux raw image...");
         var raw = Directory.EnumerateFiles(root, "ubuntu.raw", SearchOption.AllDirectories).FirstOrDefault();
-        if (raw is not null)
-        {
-            Report(progress, 1, 1, "BUILDING LINUX IMAGE", "ubuntu.raw found.");
-            logger.Info($"Resolved Linux raw image: {raw}");
-            return raw;
-        }
-
-        var parts = Directory.EnumerateFiles(root, "l4t.*", SearchOption.AllDirectories)
-            .OrderBy(path => ExtractPartNumber(Path.GetFileName(path)))
-            .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        if (raw is not null) { Report(progress, 1, 1, "BUILDING LINUX IMAGE", "ubuntu.raw found."); logger.Info($"Resolved Linux raw image: {raw}"); return raw; }
+        var parts = Directory.EnumerateFiles(root, "l4t.*", SearchOption.AllDirectories).OrderBy(path => ExtractPartNumber(Path.GetFileName(path))).ThenBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
         if (parts.Length == 0) throw new InvalidDataException("The Linux archive does not contain ubuntu.raw or l4t split image files.");
         var output = Path.Combine(root, "ubuntu.raw");
         MergePartsAsync(parts, output, progress, ct).GetAwaiter().GetResult();
