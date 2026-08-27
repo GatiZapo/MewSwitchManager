@@ -33,6 +33,10 @@
     <None Remove="Tests\**" />
   </ItemGroup>
   <ItemGroup>
+    <Using Include="MewNX.Models" />
+    <Using Include="MewNX.Core" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="SharpCompress" Version="0.50.4" />
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
     <None Update="Models\ComponentCatalog.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" />
