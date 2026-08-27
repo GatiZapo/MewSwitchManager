@@ -1,6 +1,6 @@
 using System.Drawing.Drawing2D;
 
-namespace MewSwitchManager.UI;
+namespace MewNX.UI;
 
 public static class Theme
 {
@@ -28,8 +28,6 @@ public static class Theme
     public static void Round(Graphics g, Rectangle rect, int radius, Color fill, Color border)
     {
         if (rect.Width <= 1 || rect.Height <= 1) return;
-        // Technical panels intentionally stay almost square. The radius argument
-        // is retained for source compatibility with the existing control set.
         var technicalRadius = Math.Min(4, Math.Max(1, radius));
         using var path = RoundedRect(rect, technicalRadius);
         using var brush = new SolidBrush(fill);
