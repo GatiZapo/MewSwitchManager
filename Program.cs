@@ -1,5 +1,5 @@
-using MewNX.Infrastructure;
-using MewNX.UI;
+using MewSwitchManager.Infrastructure;
+using MewSwitchManager.UI;
 
 namespace MewNX;
 
@@ -16,15 +16,12 @@ internal static class Program
             MessageBox.Show("MewNX ya está abierto.\n\nSolo se permite una instancia para evitar dos procesos accediendo al mismo USB.", "MewNX", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-
         ApplicationConfiguration.Initialize();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-
         var config = ConfigLoader.Load(AppContext.BaseDirectory);
         var paths = AppPaths.Create(config);
         Directory.CreateDirectory(paths.DataDirectory);
         Directory.CreateDirectory(paths.CacheDirectory);
-
         var logger = new AppLogger(paths.LogFile);
         Application.ThreadException += (_, e) =>
         {
@@ -34,7 +31,6 @@ internal static class Program
         };
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             logger.Error("Process unhandled exception", e.ExceptionObject as Exception);
-
         using var form = MainForm.CreateDefault(paths, logger, config);
         if (config.Ui.StartMaximized) form.WindowState = FormWindowState.Maximized;
         Application.Run(form);
