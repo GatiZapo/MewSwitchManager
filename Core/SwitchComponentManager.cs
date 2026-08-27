@@ -3,9 +3,9 @@ using SharpCompress.Archives;
 using SharpCompress.Common;
 using MewSwitchManager.Hardware;
 using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
 public sealed class SwitchComponentManager
 {
