@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using System.ComponentModel;
+using System.Diagnostics;
 
-namespace MewSwitchManager.Infrastructure;
+namespace MewNX.Infrastructure;
 
 public sealed record ProcessResult(int ExitCode, string StdOut, string StdErr);
 
@@ -47,11 +47,7 @@ public sealed class ProcessRunner(AppLogger? logger = null)
         await Task.WhenAll(stdoutTask, stderrTask);
         await process.WaitForExitAsync(cancellationToken);
 
-        var result = new ProcessResult(
-            process.ExitCode,
-            await stdoutTask,
-            await stderrTask);
-
+        var result = new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
         logger?.Debug($"Process exit {result.ExitCode}: {fileName}{Environment.NewLine}STDOUT: {TrimForLog(result.StdOut)}{Environment.NewLine}STDERR: {TrimForLog(result.StdErr)}");
         return result;
     }
