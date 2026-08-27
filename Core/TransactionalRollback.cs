@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace MewSwitchManager.Core;
 
 /// <summary>
@@ -37,10 +39,6 @@ public sealed class TransactionalRollback : IDisposable
         _originals[full] = backup;
     }
 
-    /// <summary>
-    /// Captures the complete contents of a directory. If the directory does not exist,
-    /// rollback removes the directory if the transaction creates it later.
-    /// </summary>
     public void CaptureDirectory(string directoryPath)
     {
         var full = Path.GetFullPath(directoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -48,7 +46,6 @@ public sealed class TransactionalRollback : IDisposable
 
         var existed = Directory.Exists(full);
         _capturedDirectories[full] = existed;
-
         if (!existed) return;
 
         foreach (var directory in Directory.EnumerateDirectories(full, "*", SearchOption.AllDirectories))
@@ -65,7 +62,6 @@ public sealed class TransactionalRollback : IDisposable
         if (_committed || _rolledBack) return;
         _rolledBack = true;
 
-        // Remove files created after directory capture first.
         foreach (var capturedDirectory in _capturedDirectories)
         {
             try
@@ -80,8 +76,7 @@ public sealed class TransactionalRollback : IDisposable
                 foreach (var file in Directory.EnumerateFiles(capturedDirectory.Key, "*", SearchOption.AllDirectories))
                 {
                     var full = Path.GetFullPath(file);
-                    if (!_originals.ContainsKey(full))
-                        File.Delete(full);
+                    if (!_originals.ContainsKey(full)) File.Delete(full);
                 }
 
                 foreach (var directory in Directory.EnumerateDirectories(capturedDirectory.Key, "*", SearchOption.AllDirectories)
@@ -112,6 +107,42 @@ public sealed class TransactionalRollback : IDisposable
             }
             catch { }
         }
+    }
+
+    /// <summary>
+    /// Verifies that the filesystem matches the captured pre-transaction state.
+    /// This is intentionally independent of the rollback implementation so a silent
+    /// rollback failure cannot be reported as success.
+    /// </summary>
+    public bool VerifyRestoredState()
+    {
+        if (!_rolledBack || _committed) return false;
+
+        foreach (var pair in _originals)
+        {
+            if (pair.Value is null)
+            {
+                if (File.Exists(pair.Key)) return false;
+                continue;
+            }
+
+            if (!File.Exists(pair.Key) || !File.Exists(pair.Value)) return false;
+            if (new FileInfo(pair.Key).Length != new FileInfo(pair.Value).Length) return false;
+            if (!HashesEqual(pair.Key, pair.Value)) return false;
+        }
+
+        foreach (var directory in _capturedDirectories)
+            if (directory.Value != Directory.Exists(directory.Key)) return false;
+
+        return true;
+    }
+
+    private static bool HashesEqual(string left, string right)
+    {
+        using var sha = SHA256.Create();
+        using var a = File.OpenRead(left);
+        using var b = File.OpenRead(right);
+        return CryptographicOperations.FixedTimeEquals(sha.ComputeHash(a), sha.ComputeHash(b));
     }
 
     public void Dispose()
