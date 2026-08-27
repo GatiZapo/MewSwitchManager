@@ -14,20 +14,16 @@ public sealed class DependencyManager
         using var document = JsonDocument.Parse(stream);
         if (!document.RootElement.TryGetProperty("components", out var components) || components.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("Dependency manifest has no components array.");
-
         var list = new List<ComponentManifestEntry>();
         foreach (var item in components.EnumerateArray())
         {
             var id = item.GetProperty("id").GetString();
             var name = item.GetProperty("name").GetString();
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
-                throw new InvalidDataException("Dependency manifest contains a component without id or name.");
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new InvalidDataException("Dependency manifest contains a component without id or name.");
             var deps = item.TryGetProperty("dependencies", out var d) && d.ValueKind == JsonValueKind.Array
-                ? d.EnumerateArray().Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().ToArray()
-                : Array.Empty<string>();
+                ? d.EnumerateArray().Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().ToArray() : Array.Empty<string>();
             VersionConstraint? constraint = null;
-            if (item.TryGetProperty("versionConstraint", out var c) && c.ValueKind == JsonValueKind.Object)
-                constraint = JsonSerializer.Deserialize<VersionConstraint>(c.GetRawText());
+            if (item.TryGetProperty("versionConstraint", out var c) && c.ValueKind == JsonValueKind.Object) constraint = JsonSerializer.Deserialize<VersionConstraint>(c.GetRawText());
             list.Add(new(id, name, item.GetProperty("channel").GetString() ?? "stable", deps, constraint));
         }
         return list;
@@ -40,31 +36,29 @@ public sealed class DependencyManager
     {
         var entries = manifest.ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
         var order = new List<string>();
-        var missing = new List<string>();
-        var cycles = new List<string>();
-        var incompatible = new List<string>();
+        var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cycles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var incompatible = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var blocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        void Visit(string id)
+        bool Visit(string id)
         {
-            if (visited.Contains(id)) return;
-            if (!entries.TryGetValue(id, out var entry)) { missing.Add(id); return; }
-            if (!visiting.Add(id)) { cycles.Add(id); return; }
-            foreach (var dependency in entry.Dependencies) Visit(dependency);
-            visiting.Remove(id);
-            visited.Add(id);
-
-            if (!installedVersions.TryGetValue(id, out var installedVersion))
-            {
-                order.Add(id);
-                return;
-            }
-            if (entry.Constraint is not null && !installedVersion.Equals("installed", StringComparison.OrdinalIgnoreCase) && !entry.Constraint.Allows(installedVersion))
-                incompatible.Add(id);
+            if (visited.Contains(id)) return !blocked.Contains(id);
+            if (!entries.TryGetValue(id, out var entry)) { missing.Add(id); blocked.Add(id); return false; }
+            if (!visiting.Add(id)) { cycles.Add(id); blocked.Add(id); return false; }
+            var dependenciesHealthy = true;
+            foreach (var dependency in entry.Dependencies) if (!Visit(dependency)) dependenciesHealthy = false;
+            visiting.Remove(id); visited.Add(id);
+            if (installedVersions.TryGetValue(id, out var installedVersion) && entry.Constraint is not null && !string.Equals(installedVersion, "installed", StringComparison.OrdinalIgnoreCase) && !entry.Constraint.Allows(installedVersion))
+            { incompatible.Add(id); dependenciesHealthy = false; }
+            if (!dependenciesHealthy) { blocked.Add(id); return false; }
+            if (!installedVersions.ContainsKey(id)) order.Add(id);
+            return true;
         }
 
         foreach (var id in requested.Where(x => !string.IsNullOrWhiteSpace(x))) Visit(id);
-        return new(order.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), missing.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), cycles.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), incompatible.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        return new(order.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), missing.ToArray(), cycles.ToArray(), incompatible.ToArray());
     }
 }
