@@ -1,6 +1,6 @@
-using MewSwitchManager.Hardware;
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Linux;
+using MewNX.Hardware;
+using MewNX.Infrastructure;
+using MewNX.Linux;
 using MewNX.Models;
 
 namespace MewNX.Core;
@@ -77,7 +77,6 @@ public sealed class InstallationEngine
 
     public bool IsSelectedDiskSafe() => _safety.IsSafeTarget(Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber));
     public string SelectedDiskSafetyText() => _safety.Explain(Disks.FirstOrDefault(d => d.Number == _state.SelectedDiskNumber));
-
     public void SaveAutoPlan(AutoPlan plan) { _state.AutoPlan = plan; Persist(); }
 
     public async Task PreflightAsync(CancellationToken ct = default)
