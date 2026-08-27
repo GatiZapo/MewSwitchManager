@@ -6,5 +6,5 @@ public sealed record ComponentVersionInfo(string Id, string Version, string Chan
 
 public sealed record VersionConstraint(string? Minimum = null, bool MinimumInclusive = true, string? Maximum = null, bool MaximumInclusive = true, string? Exact = null)
 {
-    public bool Allows(string version) => VersionConstraintParser.Satisfies(version, this);
+    public bool Allows(string version) => Core.VersionConstraintParser.Satisfies(version, this);
 }
