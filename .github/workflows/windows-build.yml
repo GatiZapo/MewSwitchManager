@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  PROJECT: MewSwitchManager.csproj
+  PROJECT: MewNX.csproj
   VERSION: 0.4.0-alpha.2
 
 jobs:
@@ -53,16 +53,6 @@ jobs:
       - name: Publish self-contained single-file
         shell: pwsh
         run: dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GitCommit=${{ github.sha }} --no-restore -o dist
-      - name: Sign MewNX executable when certificate is configured
-        if: ${{ env.SIGNING_CERT_BASE64 != '' && env.SIGNING_CERT_PASSWORD != '' }}
-        shell: pwsh
-        run: |
-          $cert = Join-Path $env:RUNNER_TEMP 'mewnxsig.pfx'
-          [IO.File]::WriteAllBytes($cert, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
-          $signtool = Get-ChildItem "$env:ProgramFiles\Windows Kits\10\bin\**\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $signtool) { throw 'signtool.exe was not found on the Windows runner.' }
-          & $signtool.FullName sign /fd SHA256 /f $cert /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td SHA256 'dist/MewNX.exe'
-          if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing of MewNX.exe failed.' }
       - name: Validate artifact
         shell: pwsh
         run: |
@@ -100,6 +90,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        
       - name: Download x64 package
         uses: actions/download-artifact@v8
         with:
