@@ -1,6 +1,6 @@
-using MewSwitchManager.Infrastructure;
+using MewNX.Infrastructure;
 
-namespace MewSwitchManager.Hardware;
+namespace MewNX.Hardware;
 
 public sealed record RcmPayloadResult(bool Started, int ExitCode, string Output, string Error, string ToolPath, string PayloadPath);
 
@@ -25,7 +25,7 @@ public sealed class RcmPayloadService
     {
         if (!File.Exists(payloadPath)) throw new FileNotFoundException("Payload not found.", payloadPath);
         var injector = FindInjector(appRoot);
-        if (injector is null) throw new FileNotFoundException("No supported RCM injector was found. Place TegraRcmSmash.exe in the application's tools directory.");
+        if (injector is null) throw new FileNotFoundException("No supported RCM injector was found. Place the supported injector in the application's tools directory.");
         var probe = await _processes.RunAsync(injector, $"-r \"{payloadPath}\"", ct);
         var result = new RcmPayloadResult(probe.ExitCode == 0, probe.ExitCode, probe.StdOut, probe.StdErr, injector, payloadPath);
         if (!result.Started) _logger.Warn($"RCM payload injection failed with exit code {result.ExitCode}: {result.Error}");
