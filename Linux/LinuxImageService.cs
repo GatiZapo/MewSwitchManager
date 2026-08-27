@@ -2,10 +2,10 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
-using MewSwitchManager.Infrastructure;
-using MewSwitchManager.Models;
+using MewNX.Infrastructure;
+using MewNX.Models;
 
-namespace MewSwitchManager.Linux;
+namespace MewNX.Linux;
 
 public sealed class LinuxImageService
 {
@@ -19,7 +19,7 @@ public sealed class LinuxImageService
         _logger = logger;
         _config = config;
         _http.Timeout = Timeout.InfiniteTimeSpan;
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MewSwitch-Manager/0.4");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("MewNX/0.4");
     }
 
     public string FinalPath(string cacheDirectory) => Path.Combine(cacheDirectory, _config.LinuxImage.FileName);
@@ -37,9 +37,7 @@ public sealed class LinuxImageService
         {
             var actualSize = new FileInfo(path).Length;
             var ok = actualSize == _config.LinuxImage.ExpectedSizeBytes;
-            _logger.Warn(ok
-                ? $"No SHA-1 configured; verified image by expected size only ({actualSize:N0} bytes)."
-                : $"No SHA-1 configured and size mismatch. Expected {_config.LinuxImage.ExpectedSizeBytes:N0}, got {actualSize:N0}.");
+            _logger.Warn(ok ? $"No SHA-1 configured; verified image by expected size only ({actualSize:N0} bytes)." : $"No SHA-1 configured and size mismatch. Expected {_config.LinuxImage.ExpectedSizeBytes:N0}, got {actualSize:N0}.");
             return ok;
         }
 
@@ -65,16 +63,13 @@ public sealed class LinuxImageService
 
         var existing = File.Exists(partPath) ? new FileInfo(partPath).Length : 0L;
         var restart = false;
-
         while (true)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-                if (existing > 0 && !restart)
-                    request.Headers.Range = new RangeHeaderValue(existing, null);
-
+                if (existing > 0 && !restart) request.Headers.Range = new RangeHeaderValue(existing, null);
                 _logger.Info(existing > 0 && !restart ? $"Resuming at {existing:N0} bytes." : "Starting Linux image download.");
                 using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
 
@@ -90,7 +85,6 @@ public sealed class LinuxImageService
                 response.EnsureSuccessStatusCode();
                 var append = existing > 0 && response.StatusCode == HttpStatusCode.PartialContent;
                 if (!append) existing = 0;
-
                 var total = response.Content.Headers.ContentLength;
                 if (total.HasValue && append) total += existing;
 
@@ -102,21 +96,17 @@ public sealed class LinuxImageService
                     var watch = Stopwatch.StartNew();
                     var lastBytes = received;
                     var lastTicks = watch.ElapsedTicks;
-
                     while (true)
                     {
                         var read = await source.ReadAsync(buffer, ct);
                         if (read == 0) break;
                         await target.WriteAsync(buffer.AsMemory(0, read), ct);
                         received += read;
-
                         var elapsed = watch.Elapsed.TotalSeconds;
                         var speed = elapsed > 0 ? (received - lastBytes) / Math.Max(0.001, (watch.ElapsedTicks - lastTicks) / (double)Stopwatch.Frequency) : 0;
                         if (watch.ElapsedMilliseconds >= 250)
                         {
-                            TimeSpan? eta = total.HasValue && speed > 1
-                                ? (TimeSpan?)TimeSpan.FromSeconds(Math.Max(0, (total.Value - received) / speed))
-                                : null;
+                            TimeSpan? eta = total.HasValue && speed > 1 ? TimeSpan.FromSeconds(Math.Max(0, (total.Value - received) / speed)) : null;
                             progress?.Report(new DownloadProgress(received, total, speed, eta, "DOWNLOADING LINUX IMAGE"));
                             lastBytes = received;
                             lastTicks = watch.ElapsedTicks;
@@ -126,7 +116,6 @@ public sealed class LinuxImageService
                     await target.FlushAsync(ct);
                 }
 
-                // Critical: the FileStream is closed before rename/hash verification.
                 ReplaceAtomically(partPath, finalPath);
                 _logger.Info($"Download complete: {new FileInfo(finalPath).Length:N0} bytes.");
                 progress?.Report(new DownloadProgress(new FileInfo(finalPath).Length, total, 0, TimeSpan.Zero, "VERIFYING IMAGE"));
@@ -150,9 +139,7 @@ public sealed class LinuxImageService
             {
                 var actualSize = new FileInfo(path).Length;
                 var sizeOk = actualSize == _config.LinuxImage.ExpectedSizeBytes;
-                _logger.Warn(sizeOk
-                    ? $"No SHA-1 configured; verified image by expected size only ({actualSize:N0} bytes)."
-                    : $"No SHA-1 configured and size mismatch. Expected {_config.LinuxImage.ExpectedSizeBytes:N0}, got {actualSize:N0}.");
+                _logger.Warn(sizeOk ? $"No SHA-1 configured; verified image by expected size only ({actualSize:N0} bytes)." : $"No SHA-1 configured and size mismatch. Expected {_config.LinuxImage.ExpectedSizeBytes:N0}, got {actualSize:N0}.");
                 return sizeOk;
             }
             _logger.Warn("No expected SHA-1 or expected size configured; image cannot be verified.");
@@ -181,22 +168,9 @@ public sealed class LinuxImageService
 
     private static void ReplaceAtomically(string source, string destination)
     {
-        if (!File.Exists(destination))
-        {
-            File.Move(source, destination);
-            return;
-        }
-
-        try
-        {
-            // Keep the previously verified image intact until the replacement succeeds.
-            File.Replace(source, destination, null, ignoreMetadataErrors: true);
-        }
-        catch (PlatformNotSupportedException)
-        {
-            // The manager currently runs on Windows, but keep a safe fallback for test environments.
-            File.Move(source, destination, overwrite: true);
-        }
+        if (!File.Exists(destination)) { File.Move(source, destination); return; }
+        try { File.Replace(source, destination, null, ignoreMetadataErrors: true); }
+        catch (PlatformNotSupportedException) { File.Move(source, destination, overwrite: true); }
     }
 
     private static void DeleteIfExists(string path)
