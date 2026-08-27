@@ -1,4 +1,4 @@
-name: MewSwitch Manager — vNext validation
+name: MewNX — vNext validation
 
 on:
   push:
@@ -30,11 +30,11 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - name: Restore
-        run: dotnet restore MewSwitchManager.csproj
+        run: dotnet restore MewNX.csproj
       - name: Build
-        run: dotnet build MewSwitchManager.csproj -c Release --no-restore -p:GitCommit=${{ github.sha }} -warnaserror
+        run: dotnet build MewNX.csproj -c Release --no-restore -p:GitCommit=${{ github.sha }} -warnaserror
       - name: Publish
-        run: dotnet publish MewSwitchManager.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --no-restore -o dist
+        run: dotnet publish MewNX.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --no-restore -o dist
       - name: Validate publish
         shell: pwsh
         run: |
