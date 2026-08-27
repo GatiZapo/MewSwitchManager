@@ -35,13 +35,12 @@ public sealed class CatalogUpdateCoordinator
     {
         ArgumentNullException.ThrowIfNull(plan);
 
-        return new[]
-        {
+        return [
             ..plan.Missing.Select(static value => $"Missing component or dependency: {value}"),
             ..plan.Incompatible.Select(static value => $"Incompatible installed version: {value}"),
             ..plan.Conflicts.Select(static value => $"Component conflict: {value}"),
             ..plan.Cycles.Select(static value => $"Dependency cycle: {value}")
-        }
+        ]
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
     }
