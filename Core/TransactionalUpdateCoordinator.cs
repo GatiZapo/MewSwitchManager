@@ -1,9 +1,8 @@
 namespace MewSwitchManager.Core;
 
 /// <summary>
-/// Coordinates multi-component updates as one transaction. Every managed root is
-/// captured before any mutation; a failure rolls all roots back and the coordinator
-/// verifies that the transaction no longer contains uncommitted work.
+/// Coordinates multi-root updates as one transaction. Every managed root is captured
+/// before mutation; a failure rolls all roots back and the restored state is verified.
 /// </summary>
 public sealed class TransactionalUpdateCoordinator
 {
@@ -39,9 +38,12 @@ public sealed class TransactionalUpdateCoordinator
             ct.ThrowIfCancellationRequested();
             transaction.Commit();
         }
-        catch
+        catch (Exception operationError)
         {
             transaction.Rollback();
+            if (!transaction.VerifyRestoredState())
+                throw new AggregateException("Update failed and transactional rollback could not be verified.", operationError,
+                    new IOException("The managed filesystem does not match the pre-update snapshot."));
             throw;
         }
     }
