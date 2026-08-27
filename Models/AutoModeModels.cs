@@ -1,4 +1,4 @@
-namespace MewNX.Models;
+namespace MewSwitchManager.Models;
 
 public enum AutoStepKind
 {
