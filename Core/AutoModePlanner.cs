@@ -1,18 +1,17 @@
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
 public sealed class AutoModePlanner
 {
     public AutoPlan BuildOrRefresh(AppState state)
     {
+        ArgumentNullException.ThrowIfNull(state);
         var plan = state.AutoPlan ?? new AutoPlan();
         var targetChanged = !string.Equals(plan.TargetDiskNumber, state.SelectedDiskNumber, StringComparison.OrdinalIgnoreCase) ||
                             !string.Equals(plan.TargetDiskUniqueId, state.SelectedDiskUniqueId, StringComparison.OrdinalIgnoreCase);
-
         if (targetChanged || plan.Steps.Count != 6) plan = CreatePlan(state);
         else ReconcileStepStates(plan, state);
-
         plan.TargetDiskNumber = state.SelectedDiskNumber;
         plan.TargetDiskUniqueId = state.SelectedDiskUniqueId;
         plan.CurrentStepId = plan.Steps.FirstOrDefault(x => x.State != AutoStepState.Completed)?.Id ?? "";
@@ -28,12 +27,12 @@ public sealed class AutoModePlanner
             TargetDiskUniqueId = state.SelectedDiskUniqueId,
             Steps =
             [
-                new AutoPlanStep { Id = "preflight", Kind = AutoStepKind.EnvironmentPreflight, Title = "Environment preflight", Description = "Validate Windows, dependencies, WSL and the selected USB target." },
-                new AutoPlanStep { Id = "linux-image", Kind = AutoStepKind.LinuxImage, Title = "Download + verify Linux", Description = "Resume the cached download when possible and verify the final image before use." },
-                new AutoPlanStep { Id = "usb-write", Kind = AutoStepKind.UsbWrite, Title = "Prepare Linux USB", Description = "Revalidate the physical target and write the verified Linux image. This is destructive.", RequiresConfirmation = true },
-                new AutoPlanStep { Id = "hekate-sd", Kind = AutoStepKind.HekateSd, Title = "Hekate / SD handoff", Description = "Continue the SD-side preparation after the physical USB write is complete.", RequiresConfirmation = true },
-                new AutoPlanStep { Id = "switch-config", Kind = AutoStepKind.SwitchConfiguration, Title = "Switch configuration", Description = "Apply the remaining Switch-side configuration only after the hardware checkpoint is satisfied.", RequiresConfirmation = true },
-                new AutoPlanStep { Id = "mewroot", Kind = AutoStepKind.MewrootHandoff, Title = "Mewroot handoff", Description = "Final handoff and user-controlled boot into the prepared environment.", RequiresConfirmation = true }
+                new() { Id = "preflight", Kind = AutoStepKind.EnvironmentPreflight, Title = "Environment preflight", Description = "Validate Windows, dependencies, WSL and the selected USB target." },
+                new() { Id = "linux-image", Kind = AutoStepKind.LinuxImage, Title = "Download + verify Linux", Description = "Resume the cached download when possible and verify the final image before use." },
+                new() { Id = "usb-write", Kind = AutoStepKind.UsbWrite, Title = "Prepare Linux USB", Description = "Revalidate the physical target and write the verified Linux image. This is destructive.", RequiresConfirmation = true },
+                new() { Id = "hekate-sd", Kind = AutoStepKind.HekateSd, Title = "Hekate / SD handoff", Description = "Continue the SD-side preparation after the physical USB write is complete.", RequiresConfirmation = true },
+                new() { Id = "switch-config", Kind = AutoStepKind.SwitchConfiguration, Title = "Switch configuration", Description = "Apply the remaining Switch-side configuration only after the hardware checkpoint is satisfied.", RequiresConfirmation = true },
+                new() { Id = "mewroot", Kind = AutoStepKind.MewrootHandoff, Title = "Mewroot handoff", Description = "Final handoff and user-controlled boot into the prepared environment.", RequiresConfirmation = true }
             ]
         };
         ReconcileStepStates(plan, state);
@@ -48,7 +47,6 @@ public sealed class AutoModePlanner
         Set(plan, "hekate-sd", state.Stages.Any(x => x.Stage == InstallationStage.HekateSd && x.State == StageState.Completed));
         Set(plan, "switch-config", state.Stages.Any(x => x.Stage == InstallationStage.SwitchConfiguration && x.State == StageState.Completed));
         Set(plan, "mewroot", state.Stages.Any(x => x.Stage == InstallationStage.MewrootHandoff && x.State == StageState.Completed));
-
         var firstIncomplete = plan.Steps.FirstOrDefault(x => x.State != AutoStepState.Completed);
         if (firstIncomplete is not null && firstIncomplete.RequiresConfirmation && firstIncomplete.State == AutoStepState.Pending)
         {
