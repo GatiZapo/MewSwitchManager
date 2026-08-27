@@ -54,7 +54,8 @@ public sealed class SwitchComponentManager
             try
             {
                 var release = await GetReleaseAsync(definition, ct);
-                result.Add(new ComponentStatus(definition, installed, installedVersion, release.TagName, release.HtmlUrl, installed && installedVersion != "Detected" && CompareVersions(installedVersion, release.TagName) < 0, release.Name));
+                var updateAvailable = installed && !string.Equals(installedVersion, "Detected", StringComparison.OrdinalIgnoreCase) && CompareVersions(installedVersion, release.TagName) < 0;
+                result.Add(new ComponentStatus(definition, installed, installedVersion, release.TagName, release.HtmlUrl, updateAvailable, release.Name));
             }
             catch (Exception ex)
             {
@@ -122,14 +123,19 @@ public sealed class SwitchComponentManager
         }
         catch
         {
-            // The transaction restores the exact managed component tree, including files
-            // that did not exist before the update. The legacy backup remains as a
-            // user-visible recovery point even if automatic rollback succeeds.
-            transaction.Rollback();
+            try
+            {
+                transaction.RollbackOrThrow();
+            }
+            catch (Exception rollbackEx)
+            {
+                _logger.Error($"Verified transactional rollback failed for {definition.Name}", rollbackEx);
+            }
+
             if (!string.IsNullOrWhiteSpace(backupRoot))
             {
                 try { RestoreBackup(targetRoot, backupRoot); }
-                catch (Exception restoreEx) { _logger.Error($"Automatic rollback of {definition.Name} failed", restoreEx); }
+                catch (Exception restoreEx) { _logger.Error($"Legacy backup recovery failed for {definition.Name}", restoreEx); }
             }
             throw;
         }
@@ -145,7 +151,6 @@ public sealed class SwitchComponentManager
             transaction.Capture(Path.Combine(targetRoot, "switch", "DBI", "DBI.nro"));
             return;
         }
-
         var managedRoot = definition.Id switch
         {
             SwitchComponent.Hekate => Path.Combine(targetRoot, "bootloader"),
