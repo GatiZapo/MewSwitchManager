@@ -1,6 +1,6 @@
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.UI;
+namespace MewNX.UI;
 
 public sealed class StageList : Control
 {
