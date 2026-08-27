@@ -1,3 +1,4 @@
+using MewSwitchManager.Hardware;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Models;
 
@@ -47,21 +48,42 @@ public sealed class SystemDiagnostics
         }
         catch (Exception ex) { _logger.Warn($"Diagnostics disk-space probe failed: {ex.Message}"); }
 
-        checks.Add(freeBytes >= 2L * 1024 * 1024 * 1024
-            ? new("space", "Cache storage", DiagnosticSeverity.Pass, $"{freeBytes / 1024d / 1024d / 1024d:F1} GiB available.")
-            : new("space", "Cache storage", DiagnosticSeverity.Warning, "Less than 2 GiB is available on the cache volume."));
+        const long recommendedFree = 10L * 1024 * 1024 * 1024;
+        checks.Add(freeBytes >= recommendedFree
+            ? new("space", "Working storage", DiagnosticSeverity.Pass, $"{freeBytes / 1024d / 1024d / 1024d:F1} GiB available; recommended minimum is 10 GiB.")
+            : new("space", "Working storage", freeBytes > 0 ? DiagnosticSeverity.Warning : DiagnosticSeverity.Fail, freeBytes > 0 ? $"Only {freeBytes / 1024d / 1024d / 1024d:F1} GiB is available; downloads/extraction may fail." : "Could not determine available working storage."));
 
         checks.Add(engine.WslReady
             ? new("wsl", "WSL", DiagnosticSeverity.Pass, "WSL is available.")
             : new("wsl", "WSL", DiagnosticSeverity.Warning, "WSL was not detected as ready."));
 
         checks.Add(engine.RcmConnected
-            ? new("rcm", "RCM device", DiagnosticSeverity.Pass, "Nintendo Switch RCM device detected.")
-            : new("rcm", "RCM device", DiagnosticSeverity.Warning, "RCM device is not currently connected."));
+            ? new("rcm", "RCM device", DiagnosticSeverity.Pass, "Nintendo Switch RCM/APX device detected.")
+            : new("rcm", "RCM device", DiagnosticSeverity.Warning, "RCM/APX device is not currently connected. Check USB cable/port and driver when the Switch is in RCM."));
+
+        var drives = new RemovableDriveService().Scan();
+        var sd = drives.Select(d => SafeInspect(d.Root)).FirstOrDefault(x => x?.LooksLikeSwitchSd == true);
+        if (sd is null)
+            checks.Add(new("sd", "Switch SD", DiagnosticSeverity.Warning, "No Switch-like removable storage is currently mounted."));
+        else
+        {
+            checks.Add(new("sd", "Switch SD", DiagnosticSeverity.Pass, $"{sd.Root} • {sd.TotalBytes / 1024d / 1024d / 1024d:F1} GiB total • {sd.FreeBytes / 1024d / 1024d / 1024d:F1} GiB free."));
+            checks.Add(sd.HasHekate && sd.HasBootloaderConfig
+                ? new("sd-boot", "Hekate files", DiagnosticSeverity.Pass, "bootloader/update.bin and hekate_ipl.ini detected.")
+                : new("sd-boot", "Hekate files", DiagnosticSeverity.Warning, "Hekate boot files are incomplete or not detected."));
+            checks.Add(sd.HasAtmosphere
+                ? new("sd-atmosphere", "Atmosphère", DiagnosticSeverity.Pass, "atmosphere/package3 detected.")
+                : new("sd-atmosphere", "Atmosphère", DiagnosticSeverity.Warning, "atmosphere/package3 not detected."));
+            checks.Add(sd.HasEmummc
+                ? new("sd-emummc", "emuMMC", DiagnosticSeverity.Pass, "emuMMC directory detected.")
+                : new("sd-emummc", "emuMMC", DiagnosticSeverity.Warning, "emuMMC directory not detected."));
+            foreach (var warning in sd.Warnings)
+                checks.Add(new("sd-warning-" + checks.Count, "SD warning", DiagnosticSeverity.Warning, warning));
+        }
 
         checks.Add(engine.HekateDetected
-            ? new("hekate", "Hekate / SD", DiagnosticSeverity.Pass, "Hekate configuration detected on a mounted volume.")
-            : new("hekate", "Hekate / SD", DiagnosticSeverity.Warning, "Hekate configuration was not detected on mounted volumes."));
+            ? new("hekate", "Hekate configuration", DiagnosticSeverity.Pass, "Hekate configuration detected on a mounted volume.")
+            : new("hekate", "Hekate configuration", DiagnosticSeverity.Warning, "Hekate configuration was not detected on mounted volumes."));
 
         var imagePath = new MewSwitchManager.Linux.LinuxImageService(new HttpClient(), _logger, _config).FinalPath(_paths.CacheDirectory);
         if (!File.Exists(imagePath)) checks.Add(new("linux-image", "Linux image", DiagnosticSeverity.Warning, "Linux image is not present in the local cache."));
@@ -70,11 +92,17 @@ public sealed class SystemDiagnostics
 
         var state = engine.State;
         checks.Add(state.LinuxVerified
-            ? new("state", "Installation state", DiagnosticSeverity.Pass, $"Progress persisted at {state.CurrentStage}.")
+            ? new("state", "Installation state", DiagnosticSeverity.Pass, $"Progress persisted at {state.CurrentStage}; the image will be revalidated before destructive use.")
             : new("state", "Installation state", DiagnosticSeverity.Warning, $"No verified Linux image is currently persisted; stage is {state.CurrentStage}."));
 
         var report = new DiagnosticReport(DateTimeOffset.UtcNow, checks);
         _logger.Info($"Diagnostics completed: {checks.Count(x => x.Severity == DiagnosticSeverity.Pass)} pass, {checks.Count(x => x.Severity == DiagnosticSeverity.Warning)} warning, {checks.Count(x => x.Severity == DiagnosticSeverity.Fail)} fail.");
         return Task.FromResult(report);
+    }
+
+    private static SwitchSdReport? SafeInspect(string root)
+    {
+        try { return new SwitchSdInspector().Inspect(root); }
+        catch { return null; }
     }
 }
