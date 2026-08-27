@@ -8,7 +8,7 @@ public sealed class TransactionalRollback : IDisposable
 
     public TransactionalRollback(string workingDirectory)
     {
-        _root = Path.Combine(workingDirectory, "_mewnx-transactions", DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff"));
+        _root = Path.Combine(workingDirectory, "_mewnx-transactions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
     }
 
@@ -17,25 +17,32 @@ public sealed class TransactionalRollback : IDisposable
         var full = Path.GetFullPath(targetPath);
         if (_originals.ContainsKey(full)) return;
         if (!File.Exists(full)) { _originals[full] = null; return; }
-        var backup = Path.Combine(_root, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(full))) + ".bak");
+        var backup = Path.Combine(_root, _originals.Count.ToString("D8") + ".bak");
+        Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
         File.Copy(full, backup, true);
         _originals[full] = backup;
     }
 
-    public void Commit() { _committed = true; }
+    public void Commit() => _committed = true;
 
     public void Rollback()
     {
         if (_committed) return;
-        foreach (var pair in _originals)
+        foreach (var pair in _originals.Reverse())
         {
-            if (pair.Value is null)
+            try
             {
-                TryDelete(pair.Key);
-                continue;
+                if (pair.Value is null)
+                {
+                    if (File.Exists(pair.Key)) File.Delete(pair.Key);
+                    continue;
+                }
+                var directory = Path.GetDirectoryName(pair.Key);
+                if (string.IsNullOrWhiteSpace(directory)) continue;
+                Directory.CreateDirectory(directory);
+                File.Copy(pair.Value, pair.Key, true);
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(pair.Key)!);
-            File.Copy(pair.Value, pair.Key, true);
+            catch { }
         }
     }
 
@@ -43,10 +50,5 @@ public sealed class TransactionalRollback : IDisposable
     {
         if (!_committed) Rollback();
         try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
-    }
-
-    private static void TryDelete(string path)
-    {
-        try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 }
