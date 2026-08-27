@@ -1,9 +1,9 @@
 using MewSwitchManager.Hardware;
 using MewSwitchManager.Infrastructure;
 using MewSwitchManager.Linux;
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Core;
+namespace MewNX.Core;
 
 public sealed class InstallationEngine
 {
