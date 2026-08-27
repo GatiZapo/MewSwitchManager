@@ -1,6 +1,6 @@
-using MewSwitchManager.Models;
+using MewNX.Models;
 
-namespace MewSwitchManager.Infrastructure;
+namespace MewNX.Infrastructure;
 
 public sealed record AppPaths(string DataDirectory, string CacheDirectory, string StateFile, string LogFile)
 {
