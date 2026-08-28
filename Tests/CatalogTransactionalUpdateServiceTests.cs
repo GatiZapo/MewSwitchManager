@@ -1,5 +1,5 @@
-using MewSwitchManager.Core;
-using MewSwitchManager.Models;
+using MewNX.Core;
+using MewNX.Models;
 namespace MewSwitchManager.Tests;
 public sealed class CatalogTransactionalUpdateServiceTests
 {
