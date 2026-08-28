@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using MewSwitchManager.Core;
+using MewNX.Core;
 namespace MewSwitchManager.Tests;
 public sealed class HealthRepairRoundTripTests
 {
