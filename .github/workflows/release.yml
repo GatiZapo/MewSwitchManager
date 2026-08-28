@@ -1,0 +1,154 @@
+name: MewNX — Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v0.4.0-alpha.2'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  PROJECT: MewNX.csproj
+  VERSION: 0.4.0-alpha.2
+
+jobs:
+  build:
+    name: Release build ${{ matrix.arch }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rid: win-x64
+          - arch: arm64
+            rid: win-arm64
+          - arch: x86
+            rid: win-x86
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore $env:PROJECT
+      - name: Build Release
+        run: dotnet build $env:PROJECT -c Release --no-restore --nologo -p:GitCommit=${{ github.sha }} -warnaserror
+      - name: Publish self-contained single-file
+        run: dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GitCommit=${{ github.sha }} --no-restore --nologo -o dist
+      - name: Validate artifact
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'dist/MewNX.exe'
+          $cfg = Join-Path $PWD 'dist/appsettings.json'
+          if (-not (Test-Path $exe)) { throw 'Published MewNX executable was not generated.' }
+          if (-not (Test-Path $cfg)) { throw 'appsettings.json was not published.' }
+          if ((Get-Item $exe).Length -lt 1000000) { throw 'Published executable is unexpectedly small.' }
+      - name: Create SHA-256 checksum
+        shell: pwsh
+        run: (Get-FileHash 'dist/MewNX.exe' -Algorithm SHA256).Hash + '  MewNX.exe' | Set-Content 'dist/SHA256SUMS.txt'
+      - name: Package Windows artifact
+        shell: pwsh
+        run: Compress-Archive -Path 'dist/MewNX.exe','dist/appsettings.json','dist/SHA256SUMS.txt' -DestinationPath 'MewNX-${{ matrix.arch }}.zip' -Force
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: MewNX-${{ matrix.arch }}
+          path: MewNX-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  installer:
+    name: Build MewNX x64 installer
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+      SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Download x64 package
+        uses: actions/download-artifact@v8
+        with:
+          name: MewNX-x64
+          path: package
+      - name: Extract x64 package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Expand-Archive -Path 'package/MewNX-x64.zip' -DestinationPath dist -Force
+      - name: Locate Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $candidates = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "${env:ProgramFiles}\Inno Setup 6\ISCC.exe")
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if (-not $found) { throw 'Inno Setup 6 was not found on the runner.' }
+            "ISCC=$found" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else { "ISCC=$($iscc.Source)" | Out-File -FilePath $env:GITHUB_ENV -Append }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & $env:ISCC 'installer.iss'
+          if (-not (Test-Path 'installer-output/MewNX-Setup-x64.exe')) { throw 'MewNX installer was not generated.' }
+      - name: Sign installer when certificate is configured
+        if: ${{ env.SIGNING_CERT_BASE64 != '' && env.SIGNING_CERT_PASSWORD != '' }}
+        shell: pwsh
+        run: |
+          $cert = Join-Path $env:RUNNER_TEMP 'mewnxsig.pfx'
+          [IO.File]::WriteAllBytes($cert, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          $signtool = Get-ChildItem "$env:ProgramFiles\Windows Kits\10\bin\**\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe was not found on the Windows runner.' }
+          & $signtool.FullName sign /fd SHA256 /f $cert /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td SHA256 'installer-output/MewNX-Setup-x64.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing failed.' }
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: MewNX-Setup-x64
+          path: installer-output/MewNX-Setup-x64.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub release
+    needs: [build, installer]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download x64 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: MewNX-x64
+          path: release
+      - name: Download ARM64 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: MewNX-arm64
+          path: release
+      - name: Download x86 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: MewNX-x86
+          path: release
+      - name: Download installer
+        uses: actions/download-artifact@v8
+        with:
+          name: MewNX-Setup-x64
+          path: release
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release/*
+          generate_release_notes: true
