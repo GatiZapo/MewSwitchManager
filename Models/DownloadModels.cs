@@ -1,4 +1,4 @@
-namespace MewSwitchManager.Models;
+namespace MewNX.Models;
 
 public enum DownloadJobState { Queued, Downloading, Processing, Ready, Installing, Verifying, Completed, Failed, Cancelled }
 
