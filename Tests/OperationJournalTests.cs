@@ -21,4 +21,25 @@ public sealed class OperationJournalTests
         }
         finally { Directory.Delete(root, true); }
     }
+
+    [Fact]
+    public void RecoversFromCorruptedPrimaryUsingBackup()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "journal.json");
+            var journal = new OperationJournal(path);
+            journal.Append(new("op", "update", "Started", DateTimeOffset.UtcNow));
+            journal.Append(new("op", "update", "Staging", DateTimeOffset.UtcNow.AddSeconds(1)));
+
+            File.WriteAllText(path, "{ truncated");
+
+            var recovered = journal.Load();
+            Assert.Single(recovered);
+            Assert.Equal("Started", recovered[0].State);
+        }
+        finally { Directory.Delete(root, true); }
+    }
 }
