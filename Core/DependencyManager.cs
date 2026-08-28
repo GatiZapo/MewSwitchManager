@@ -26,6 +26,7 @@ public sealed class DependencyManager
     public DependencyPlan BuildPlan(IEnumerable<ComponentManifestEntry> manifest, IEnumerable<string> requested, ISet<string> installed) => BuildPlan(manifest, requested, installed.ToDictionary(x => x, _ => "installed", StringComparer.OrdinalIgnoreCase));
     public DependencyPlan BuildPlan(IEnumerable<ComponentManifestEntry> manifest, IEnumerable<string> requested, IReadOnlyDictionary<string, string> installedVersions)
     {
+        // Final manager gate: a requested component is never installable when its dependency graph is unhealthy.
         var entries = manifest.ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase); var order = new List<string>(); var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var cycles = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var incompatible = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var blocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool Visit(string id)
         {

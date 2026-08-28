@@ -7,8 +7,7 @@ public sealed class ComponentHealthServiceTests
     [Fact]
     public async Task DetectsMissingEmptyAndHealthyPayloads()
     {
-        var root = Path.Combine(Path.GetTempPath(), "mewnx-health", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
+        var root = Path.Combine(Path.GetTempPath(), "mewnx-health", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
         {
             var atmosphere = Path.Combine(root, "atmosphere", "package3"); Directory.CreateDirectory(Path.GetDirectoryName(atmosphere)!); await File.WriteAllTextAsync(atmosphere, "valid");
