@@ -67,6 +67,7 @@ public sealed partial class MainForm : Form
         InitializeDiagnostics();
         InitializeAutoMode();
         InitializeAioShell();
+        InitializeAioTools(_paths);
         ApplyVisualPolish();
         EnableDarkTitleBar();
         _logger.Message += Logger_Message;

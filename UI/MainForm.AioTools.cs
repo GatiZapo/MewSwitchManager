@@ -7,7 +7,7 @@ namespace MewNX.UI;
 
 public sealed partial class MainForm
 {
-    private readonly SwitchToolInstaller _toolInstaller;
+    private SwitchToolInstaller _toolInstaller = null!;
     private readonly Button _aioToolsButton = new();
     private readonly Button _aioAllButton = new();
     private readonly Button _aioScanButton = new();
