@@ -1,4 +1,5 @@
 using MewNX.Core;
+using MewNX.Models;
 
 namespace MewNX.Tests;
 
@@ -33,13 +34,37 @@ public sealed class OperationJournalTests
             var journal = new OperationJournal(path);
             journal.Append(new("op", "update", "Started", DateTimeOffset.UtcNow));
             journal.Append(new("op", "update", "Staging", DateTimeOffset.UtcNow.AddSeconds(1)));
-
             File.WriteAllText(path, "{ truncated");
-
             var recovered = journal.Load();
             Assert.Single(recovered);
             Assert.Equal("Started", recovered[0].State);
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void UsbWriteRequiresTargetFingerprint()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var journal = new OperationJournal(Path.Combine(root, "journal.json"));
+            Assert.Throws<ArgumentException>(() => journal.Append(new("op", "UsbWrite", "Running", DateTimeOffset.UtcNow)));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void TargetFingerprintMustMatchConfirmedIdentity()
+    {
+        var entry = new OperationJournalEntry("op", "UsbWrite", "Running", DateTimeOffset.UtcNow, TargetDiskFingerprint: "ABC");
+        var matching = new DiskIdentity("7", "1234", "5678", "SERIAL", "USB\\VID_1234&PID_5678\\SERIAL", "ABC", DiskIdentityConfidence.Confirmed, DiskIdentitySourceStatus.Confirmed);
+        var different = matching with { CanonicalFingerprint = "DEF" };
+        var unknown = matching with { Confidence = DiskIdentityConfidence.Unknown };
+
+        Assert.True(OperationJournal.TargetMatches(entry, matching));
+        Assert.False(OperationJournal.TargetMatches(entry, different));
+        Assert.False(OperationJournal.TargetMatches(entry, unknown));
     }
 }
