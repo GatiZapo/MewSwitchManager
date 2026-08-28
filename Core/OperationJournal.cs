@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MewNX.Models;
 
 namespace MewNX.Core;
 
@@ -7,7 +8,9 @@ public sealed record OperationJournalEntry(
     string Kind,
     string State,
     DateTimeOffset Timestamp,
-    string? Error = null);
+    string? Error = null,
+    string? TargetDiskFingerprint = null,
+    string? TargetDiskNumber = null);
 
 public sealed class OperationJournal
 {
@@ -36,13 +39,14 @@ public sealed class OperationJournal
         ArgumentNullException.ThrowIfNull(entry);
         if (string.IsNullOrWhiteSpace(entry.OperationId))
             throw new ArgumentException("Operation ID is required.", nameof(entry));
+        if (string.IsNullOrWhiteSpace(entry.TargetDiskFingerprint) &&
+            string.Equals(entry.Kind, "UsbWrite", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Destructive storage operations require a target disk fingerprint.", nameof(entry));
 
         lock (_gate)
         {
             var directory = Path.GetDirectoryName(_path);
-            if (!string.IsNullOrWhiteSpace(directory))
-                Directory.CreateDirectory(directory);
-
+            if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
             var entries = LoadCore().ToList();
             entries.Add(entry);
             WriteAtomically(entries);
@@ -51,8 +55,7 @@ public sealed class OperationJournal
 
     public IReadOnlyList<OperationJournalEntry> Load()
     {
-        lock (_gate)
-            return LoadCore();
+        lock (_gate) return LoadCore();
     }
 
     public IEnumerable<OperationJournalEntry> Incomplete()
@@ -63,71 +66,49 @@ public sealed class OperationJournal
                 !string.Equals(entry.State, "Completed", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(entry.State, "RolledBack", StringComparison.OrdinalIgnoreCase));
 
+    public static bool TargetMatches(OperationJournalEntry entry, DiskIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(identity);
+        return identity.Confidence == DiskIdentityConfidence.Confirmed &&
+               !string.IsNullOrWhiteSpace(entry.TargetDiskFingerprint) &&
+               string.Equals(entry.TargetDiskFingerprint, identity.CanonicalFingerprint, StringComparison.OrdinalIgnoreCase);
+    }
+
     private IReadOnlyList<OperationJournalEntry> LoadCore()
     {
-        if (TryRead(_path, out var entries))
-            return entries;
-
-        // A crashed process can leave a truncated primary journal. The backup is kept
-        // specifically so recovery does not silently lose the user's progress.
-        if (TryRead(_backupPath, out entries))
-            return entries;
-
+        if (TryRead(_path, out var entries)) return entries;
+        if (TryRead(_backupPath, out entries)) return entries;
         return [];
     }
 
     private void WriteAtomically(IReadOnlyList<OperationJournalEntry> entries)
     {
         var json = JsonSerializer.Serialize(entries, Options);
-
-        // Write and flush the complete replacement before touching the live journal.
-        using (var stream = new FileStream(
-                   _temporaryPath,
-                   FileMode.Create,
-                   FileAccess.Write,
-                   FileShare.None,
-                   4096,
-                   FileOptions.WriteThrough))
+        using (var stream = new FileStream(_temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
         using (var writer = new StreamWriter(stream))
         {
             writer.Write(json);
             writer.Flush();
             stream.Flush(true);
         }
-
-        if (File.Exists(_path))
-            File.Copy(_path, _backupPath, true);
-
+        if (File.Exists(_path)) File.Copy(_path, _backupPath, true);
         File.Move(_temporaryPath, _path, true);
     }
 
     private static bool TryRead(string path, out List<OperationJournalEntry> entries)
     {
         entries = [];
-        if (!File.Exists(path))
-            return false;
-
+        if (!File.Exists(path)) return false;
         try
         {
-            var parsed = JsonSerializer.Deserialize<List<OperationJournalEntry>>(
-                File.ReadAllText(path), Options);
-            if (parsed is null)
-                return false;
-
+            var parsed = JsonSerializer.Deserialize<List<OperationJournalEntry>>(File.ReadAllText(path), Options);
+            if (parsed is null) return false;
             entries = parsed;
             return true;
         }
-        catch (JsonException)
-        {
-            return false;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
+        catch (JsonException) { return false; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 }
