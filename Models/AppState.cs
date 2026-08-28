@@ -38,9 +38,8 @@ public sealed class AppState
 
     public void InvalidateDiskBoundProgressIfTargetChanged()
     {
-        if (string.IsNullOrWhiteSpace(ProgressDiskUniqueId))
-            return;
-
+        // Missing persisted identity is fail-safe: disk-bound progress must never be reused
+        // when the checkpoint cannot positively identify its original target.
         if (HasProgressForSelectedDisk())
             return;
 
@@ -50,7 +49,7 @@ public sealed class AppState
             {
                 stage.State = StageState.Pending;
                 stage.CompletedAt = null;
-                stage.Message = "Pending: the selected storage target differs from the device used by the persisted checkpoint.";
+                stage.Message = "Pending: the selected storage target cannot be positively matched to the persisted checkpoint.";
             }
         }
 
