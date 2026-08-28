@@ -6,7 +6,6 @@ global using AppPaths = MewNX.Infrastructure.AppPaths;
 global using ConfigLoader = MewNX.Infrastructure.ConfigLoader;
 global using DependencyService = MewNX.Infrastructure.DependencyService;
 global using GitHubReleaseClient = MewNX.Infrastructure.GitHubReleaseClient;
-global using JsonStore = MewNX.Infrastructure.JsonStore;
 global using ProcessRunner = MewNX.Infrastructure.ProcessRunner;
 global using UpdateService = MewNX.Infrastructure.UpdateService;
 
