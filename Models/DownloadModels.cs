@@ -20,4 +20,12 @@ public sealed record DownloadJob(
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
+public sealed record DownloadProgress(
+    long BytesReceived,
+    long? TotalBytes,
+    double BytesPerSecond,
+    TimeSpan? EstimatedTimeRemaining,
+    string Phase,
+    string Name);
+
 public sealed record PreparedContent(string Path, string Kind, long SizeBytes);
