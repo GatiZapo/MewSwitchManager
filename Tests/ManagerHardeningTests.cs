@@ -1,5 +1,5 @@
-using MewSwitchManager.Core;
-using MewSwitchManager.Models;
+using MewNX.Core;
+using MewNX.Models;
 using Xunit;
 
 namespace MewSwitchManager.Tests;
@@ -23,7 +23,7 @@ public sealed class ManagerHardeningTests
     public void CatalogPlanDoesNotDowngradeNewerInstalledComponent()
     {
         var catalog = new ComponentCatalog(1, DateTimeOffset.UtcNow, [
-            new ComponentCatalogEntry("atmosphere", "Atmosphère", "stable", "1.0.0", "1.1.0", null, [], [], null, null, null)
+            new ComponentCatalogEntry("atmosphere", "Atmosphère", "stable", "1.0.0", "1.1.0", null, [], [], null, null)
         ]);
         var plan = new ComponentCatalogService().BuildPlan(catalog, ["atmosphere"],
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["atmosphere"] = "1.2.0" });
