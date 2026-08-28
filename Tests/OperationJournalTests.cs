@@ -1,6 +1,6 @@
-using MewSwitchManager.Core;
+using MewNX.Core;
 
-namespace MewSwitchManager.Tests;
+namespace MewNX.Tests;
 
 public sealed class OperationJournalTests
 {
