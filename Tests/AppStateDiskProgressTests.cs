@@ -44,14 +44,18 @@ public sealed class AppStateDiskProgressTests
     }
 
     [Fact]
-    public void DiskBoundProgressIsNotTrustedWithoutPersistedIdentity()
+    public void UnboundDiskProgressIsNotReused()
     {
         var state = CreateState("\\\\.\\PHYSICALDRIVE7", "USB-A");
         state.Stages.Single(x => x.Stage == InstallationStage.UsbStoragePreparation).State = StageState.Completed;
+        state.AutoPlan = new AutoPlan { TargetDiskNumber = state.SelectedDiskNumber, TargetDiskUniqueId = state.SelectedDiskUniqueId };
 
         state.ReconcilePersistedProgress();
 
-        Assert.Equal(StageState.Completed, state.Stages.Single(x => x.Stage == InstallationStage.UsbStoragePreparation).State);
+        Assert.Equal(StageState.Pending, state.Stages.Single(x => x.Stage == InstallationStage.UsbStoragePreparation).State);
+        Assert.Null(state.AutoPlan);
+        Assert.Equal(InstallationStage.EnvironmentPreflight, state.CurrentStage);
+        Assert.Equal("USB-A", state.ProgressDiskUniqueId);
     }
 
     private static AppState CreateState(string diskNumber, string uniqueId)
