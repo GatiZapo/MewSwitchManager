@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Text;
 using MewNX.Infrastructure;
 using MewNX.Models;
-using MewSwitchManager.Core;
+using MewNX.Core;
 
 namespace MewNX.Tests;
 
