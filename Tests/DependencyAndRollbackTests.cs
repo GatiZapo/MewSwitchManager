@@ -1,5 +1,5 @@
-using MewSwitchManager.Core;
-using MewSwitchManager.Models;
+using MewNX.Core;
+using MewNX.Models;
 using Xunit;
 
 namespace MewSwitchManager.Tests;
