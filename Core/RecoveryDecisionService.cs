@@ -24,6 +24,10 @@ public sealed class RecoveryDecisionService
         if (identity.Confidence != DiskIdentityConfidence.Confirmed)
             return RecoveryDecision.ManualInterventionRequired;
 
+        if (string.IsNullOrWhiteSpace(entry.TargetDiskFingerprint) ||
+            !OperationJournal.TargetMatches(entry, identity))
+            return RecoveryDecision.ManualInterventionRequired;
+
         if (!physicalStateConsistent)
             return RecoveryDecision.ManualInterventionRequired;
 
