@@ -7,20 +7,13 @@ namespace MewNX.UI;
 
 public sealed partial class MainForm
 {
-    private SwitchToolInstaller _toolInstaller = null!;
+    private readonly SwitchToolInstaller _toolInstaller;
     private readonly Button _aioToolsButton = new();
     private readonly Button _aioAllButton = new();
     private readonly Button _aioScanButton = new();
     private readonly ComboBox _aioPackSelector = new();
     private readonly ListView _aioToolList = new();
     private readonly Label _aioScanStatus = new();
-
-    protected override void OnLoad(EventArgs e)
-    {
-        base.OnLoad(e);
-        if (_toolInstaller is null) InitializeAioTools(AppPaths.Create(_config));
-        Shown += async (_, _) => await RefreshExperienceAsync();
-    }
 
     private void InitializeAioTools(AppPaths paths)
     {
