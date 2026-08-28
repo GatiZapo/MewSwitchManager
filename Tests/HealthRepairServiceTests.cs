@@ -1,4 +1,4 @@
-using MewSwitchManager.Core;
+using MewNX.Core;
 namespace MewSwitchManager.Tests;
 public sealed class HealthRepairServiceTests
 {
