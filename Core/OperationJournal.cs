@@ -37,17 +37,14 @@ public sealed class OperationJournal
     public void Append(OperationJournalEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        if (string.IsNullOrWhiteSpace(entry.OperationId))
-            throw new ArgumentException("Operation ID is required.", nameof(entry));
-        if (string.IsNullOrWhiteSpace(entry.TargetDiskFingerprint) &&
-            string.Equals(entry.Kind, "UsbWrite", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Destructive storage operations require a target disk fingerprint.", nameof(entry));
+        ValidateEntry(entry);
 
         lock (_gate)
         {
             var directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
             var entries = LoadCore().ToList();
+            ValidateTransition(entries, entry);
             entries.Add(entry);
             WriteAtomically(entries);
         }
@@ -63,8 +60,8 @@ public sealed class OperationJournal
             .GroupBy(entry => entry.OperationId, StringComparer.Ordinal)
             .Select(group => group.OrderByDescending(entry => entry.Timestamp).First())
             .Where(entry =>
-                !string.Equals(entry.State, "Completed", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(entry.State, "RolledBack", StringComparison.OrdinalIgnoreCase));
+                !string.Equals(entry.State, nameof(OperationJournalState.Committed), StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(entry.State, nameof(OperationJournalState.RolledBack), StringComparison.OrdinalIgnoreCase));
 
     public static bool TargetMatches(OperationJournalEntry entry, DiskIdentity identity)
     {
@@ -73,6 +70,37 @@ public sealed class OperationJournal
         return identity.Confidence == DiskIdentityConfidence.Confirmed &&
                !string.IsNullOrWhiteSpace(entry.TargetDiskFingerprint) &&
                string.Equals(entry.TargetDiskFingerprint, identity.CanonicalFingerprint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ValidateEntry(OperationJournalEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.OperationId))
+            throw new ArgumentException("Operation ID is required.", nameof(entry));
+        if (!Enum.TryParse<OperationJournalState>(entry.State, true, out _))
+            throw new ArgumentException("Unknown journal state.", nameof(entry));
+        if (string.Equals(entry.Kind, "UsbWrite", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(entry.TargetDiskFingerprint))
+            throw new ArgumentException("Destructive storage operations require a target disk fingerprint.", nameof(entry));
+    }
+
+    private static void ValidateTransition(IReadOnlyList<OperationJournalEntry> entries, OperationJournalEntry next)
+    {
+        var previous = entries
+            .Where(entry => string.Equals(entry.OperationId, next.OperationId, StringComparison.Ordinal))
+            .OrderByDescending(entry => entry.Timestamp)
+            .FirstOrDefault();
+
+        if (previous is null)
+        {
+            if (!Enum.TryParse<OperationJournalState>(next.State, true, out var initial) || initial != OperationJournalState.Prepared)
+                throw new InvalidOperationException("A new operation must start in Prepared state.");
+            return;
+        }
+
+        if (!Enum.TryParse<OperationJournalState>(previous.State, true, out var from) ||
+            !Enum.TryParse<OperationJournalState>(next.State, true, out var to) ||
+            !OperationJournalTransitions.IsValid(from, to))
+            throw new InvalidOperationException($"Invalid journal transition: {previous.State} -> {next.State}.");
     }
 
     private IReadOnlyList<OperationJournalEntry> LoadCore()
