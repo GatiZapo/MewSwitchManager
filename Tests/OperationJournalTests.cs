@@ -67,4 +67,23 @@ public sealed class OperationJournalTests
         Assert.False(OperationJournal.TargetMatches(entry, different));
         Assert.False(OperationJournal.TargetMatches(entry, unknown));
     }
+
+    [Fact]
+    public void InterruptedUsbWriteRemainsIncompleteUntilExplicitlyCommitted()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var journal = new OperationJournal(Path.Combine(root, "journal.json"));
+            journal.Append(new("op", "UsbWrite", "Prepared", DateTimeOffset.UtcNow, TargetDiskFingerprint: "ABC"));
+            journal.Append(new("op", "UsbWrite", "Writing", DateTimeOffset.UtcNow.AddSeconds(1), TargetDiskFingerprint: "ABC"));
+
+            var incomplete = journal.Incomplete().Single();
+            Assert.Equal("Writing", incomplete.State);
+            Assert.NotEqual("Completed", incomplete.State);
+            Assert.NotEqual("Committed", incomplete.State);
+        }
+        finally { Directory.Delete(root, true); }
+    }
 }
