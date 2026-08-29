@@ -1,0 +1,78 @@
+name: MewNX — Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: mewnx-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Regression tests
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore tests
+        run: dotnet restore Tests/MewNX.Tests.csproj
+      - name: Build tests
+        run: dotnet build Tests/MewNX.Tests.csproj -c Release --no-restore --nologo -warnaserror
+      - name: Run regression tests
+        run: dotnet test Tests/MewNX.Tests.csproj -c Release --no-build --no-restore --logger "trx;LogFileName=mewnxtests.trx" --results-directory TestResults --nologo
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: MewNX-regression-results
+          path: TestResults/*.trx
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build:
+    name: Build and publish ${{ matrix.rid }}
+    needs: tests
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-arm64, win-x86]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Clean stale output
+        shell: pwsh
+        run: Remove-Item -Recurse -Force -Path bin,obj,dist -ErrorAction SilentlyContinue
+      - name: Restore
+        run: dotnet restore MewNX.csproj
+      - name: Build Release
+        run: dotnet build MewNX.csproj -c Release --no-restore --nologo -p:GitCommit=${{ github.sha }} -warnaserror
+      - name: Publish self-contained single-file
+        run: dotnet publish MewNX.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GitCommit=${{ github.sha }} --no-restore --nologo -o dist
+      - name: Validate publish
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'dist/MewNX.exe'
+          $cfg = Join-Path $PWD 'dist/appsettings.json'
+          if (-not (Test-Path $exe)) { throw 'Published MewNX executable was not generated.' }
+          if (-not (Test-Path $cfg)) { throw 'appsettings.json was not published.' }
+          $size = (Get-Item $exe).Length
+          if ($size -lt 1000000) { throw "Published EXE is unexpectedly small: $size bytes" }
+          Write-Host "${{ matrix.rid }} MewNX OK: $size bytes"

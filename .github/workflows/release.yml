@@ -1,18 +1,17 @@
-name: MewNX — Windows CI
+name: MewNX — Release
 
 on:
   push:
-    branches: [main, master]
     tags: ['v*']
-  pull_request:
   workflow_dispatch:
-
-concurrency:
-  group: mewnx-windows-ci-${{ github.ref }}
-  cancel-in-progress: true
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v0.4.0-alpha.2'
+        required: true
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   PROJECT: MewNX.csproj
@@ -20,12 +19,9 @@ env:
 
 jobs:
   build:
-    name: Build Windows ${{ matrix.arch }}
+    name: Release build ${{ matrix.arch }}
     runs-on: windows-latest
     timeout-minutes: 35
-    env:
-      SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-      SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,26 +39,20 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
-      - name: Clean stale output
-        shell: pwsh
-        run: Remove-Item -Recurse -Force -Path bin,obj,dist -ErrorAction SilentlyContinue
       - name: Restore
         run: dotnet restore $env:PROJECT
-      - name: Build Release (warnings are errors)
-        run: dotnet build $env:PROJECT -c Release --no-restore -p:GitCommit=${{ github.sha }} -warnaserror
+      - name: Build Release
+        run: dotnet build $env:PROJECT -c Release --no-restore --nologo -p:GitCommit=${{ github.sha }} -warnaserror
       - name: Publish self-contained single-file
-        shell: pwsh
-        run: dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GitCommit=${{ github.sha }} --no-restore -o dist
+        run: dotnet publish $env:PROJECT -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:GitCommit=${{ github.sha }} --no-restore --nologo -o dist
       - name: Validate artifact
         shell: pwsh
         run: |
           $exe = Join-Path $PWD 'dist/MewNX.exe'
           $cfg = Join-Path $PWD 'dist/appsettings.json'
-          if (-not (Test-Path $exe)) { throw 'Published MewNX EXE was not generated.' }
+          if (-not (Test-Path $exe)) { throw 'Published MewNX executable was not generated.' }
           if (-not (Test-Path $cfg)) { throw 'appsettings.json was not published.' }
-          $size = (Get-Item $exe).Length
-          if ($size -lt 1000000) { throw "Published EXE is unexpectedly small: $size bytes" }
-          Write-Host "${{ matrix.arch }} MewNX OK: $size bytes"
+          if ((Get-Item $exe).Length -lt 1000000) { throw 'Published executable is unexpectedly small.' }
       - name: Create SHA-256 checksum
         shell: pwsh
         run: (Get-FileHash 'dist/MewNX.exe' -Algorithm SHA256).Hash + '  MewNX.exe' | Set-Content 'dist/SHA256SUMS.txt'
@@ -80,17 +70,14 @@ jobs:
   installer:
     name: Build MewNX x64 installer
     needs: build
-    if: ${{ success() }}
     runs-on: windows-latest
-    permissions:
-      contents: read
+    timeout-minutes: 25
     env:
       SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
       SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        
       - name: Download x64 package
         uses: actions/download-artifact@v8
         with:
@@ -116,7 +103,7 @@ jobs:
         run: |
           & $env:ISCC 'installer.iss'
           if (-not (Test-Path 'installer-output/MewNX-Setup-x64.exe')) { throw 'MewNX installer was not generated.' }
-      - name: Sign MewNX installer when certificate is configured
+      - name: Sign installer when certificate is configured
         if: ${{ env.SIGNING_CERT_BASE64 != '' && env.SIGNING_CERT_PASSWORD != '' }}
         shell: pwsh
         run: |
@@ -125,7 +112,7 @@ jobs:
           $signtool = Get-ChildItem "$env:ProgramFiles\Windows Kits\10\bin\**\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw 'signtool.exe was not found on the Windows runner.' }
           & $signtool.FullName sign /fd SHA256 /f $cert /p $env:SIGNING_CERT_PASSWORD /tr http://timestamp.digicert.com /td SHA256 'installer-output/MewNX-Setup-x64.exe'
-          if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing of the MewNX installer failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing failed.' }
       - name: Upload installer
         uses: actions/upload-artifact@v7
         with:
@@ -134,13 +121,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  release:
-    name: Publish tagged release
-    if: startsWith(github.ref, 'refs/tags/v')
+  publish:
+    name: Publish GitHub release
     needs: [build, installer]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Download x64 artifact
         uses: actions/download-artifact@v8
